@@ -1,4 +1,4 @@
-bps_model,severity,return_interval(years),percent_of_all_fires
+bps_model_id,severity,return_interval(years),percent_of_all_fires
 10080_1_2_3_7,Replacement,294,3
 10080_1_2_3_7,Moderate (Mixed),38,26
 10080_1_2_3_7,Low (Surface),14,71

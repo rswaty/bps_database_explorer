@@ -1,4 +1,4 @@
-bps_model,state_class_source,state_class_to,transition_type_id,probability, return_interval(years) ,age_reset,tst_min
+bps_model_id,state_class_source,state_class_to,transition_type_id,probability, return_interval(years) ,age_reset,tst_min
 10080_1_2_3_7,Early1:ALL,Early1:ALL,Mixed Fire,0.08,13,No,0
 10080_1_2_3_7,Early1:ALL,Early1:ALL,Replacement Fire,0.005,200,Yes,0
 10080_1_2_3_7,Early1:ALL,Early1:ALL,Surface Fire,0.02,50,No,0
