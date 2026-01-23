@@ -449,7 +449,8 @@ if query_conditions:
                         # Document download
                         if show_document:
                             st.markdown("**Document:**")
-                            doc_exists, doc_path, doc_name = [s[1] for s in sections if s[0] == "Document"][0]
+                            # Get document info
+                            doc_name = row['document'] if pd.notna(row['document']) else None
                             if doc_exists and doc_path:
                                 with open(doc_path, 'rb') as f:
                                     doc_bytes = f.read()
