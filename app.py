@@ -3,6 +3,7 @@ import sqlite3
 import pandas as pd
 from pathlib import Path
 import os
+import altair as alt
 
 # Page configuration
 st.set_page_config(
@@ -487,10 +488,16 @@ if query_conditions:
                     
                     if len(fire_df) > 0:
                         st.subheader("Return Intervals by Severity")
-                        # Horizontal bar chart of return intervals
-                        chart_data = fire_df.set_index('severity')['return_interval']
-                        # Use bar_chart with orientation='h' equivalent by transposing
-                        st.bar_chart(chart_data, use_container_width=True)
+                        # Horizontal bar chart of return intervals using Altair
+                        chart = alt.Chart(fire_df).mark_bar().encode(
+                            x=alt.X('return_interval:Q', title='Return Interval (years)'),
+                            y=alt.Y('severity:N', title='Severity', sort='-x'),
+                            tooltip=['severity', 'return_interval', 'percent']
+                        ).properties(
+                            width=600,
+                            height=300
+                        )
+                        st.altair_chart(chart, use_container_width=True)
                         
                         # Data table
                         st.markdown("**Fire Frequency Data:**")
