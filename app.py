@@ -160,10 +160,22 @@ with st.sidebar:
     # Fire Frequency Filters
     st.markdown("**🔥 Fire Frequency Filters**")
     
-    # Store slider values
+    # Define preset ranges
+    fire_presets = [
+        ("No Filter", None),
+        ("Very Frequent (< 10 years)", (0, 10)),
+        ("Frequent (10-50 years)", (10, 50)),
+        ("Moderate (50-100 years)", (50, 100)),
+        ("Infrequent (100-500 years)", (100, 500)),
+        ("Very Infrequent (500-1000 years)", (500, 1000)),
+        ("Rare (> 1000 years)", (1000, None)),  # None means use max
+        ("Custom Range", "custom")
+    ]
+    
+    # Store filter values
     fire_filters = {}
     
-    # Create sliders for each severity category
+    # Create dropdowns for each severity category
     severity_order = ['All Fires', 'Low (Surface)', 'Moderate (Mixed)', 'Replacement']
     for severity in severity_order:
         if severity in fire_ranges:
@@ -171,14 +183,56 @@ with st.sidebar:
             min_val = range_info['min']
             max_val = range_info['max']
             
-            slider_values = st.slider(
-                f"{severity} Return Interval (years)",
-                min_value=min_val,
-                max_value=max_val,
-                value=(min_val, max_val),
+            # Create preset options for this severity
+            preset_options = [preset[0] for preset in fire_presets]
+            selected_preset = st.selectbox(
+                f"{severity} Return Interval",
+                preset_options,
+                index=0,  # Default to "No Filter"
+                key=f"fire_preset_{severity}",
                 help=f"Filter models by {severity} fire return interval. Range: {min_val}-{max_val} years. Searches the fire_frequency table."
             )
-            fire_filters[severity] = slider_values
+            
+            # Find the selected preset
+            selected_range = None
+            for preset_name, preset_range in fire_presets:
+                if preset_name == selected_preset:
+                    selected_range = preset_range
+                    break
+            
+            # Handle custom range or preset
+            if selected_range == "custom":
+                # Show custom number inputs
+                col1, col2 = st.columns(2)
+                with col1:
+                    custom_min = st.number_input(
+                        f"{severity} Min (years)",
+                        min_value=min_val,
+                        max_value=max_val,
+                        value=min_val,
+                        key=f"fire_min_{severity}"
+                    )
+                with col2:
+                    custom_max = st.number_input(
+                        f"{severity} Max (years)",
+                        min_value=min_val,
+                        max_value=max_val,
+                        value=max_val,
+                        key=f"fire_max_{severity}"
+                    )
+                if custom_min <= custom_max:
+                    fire_filters[severity] = (custom_min, custom_max)
+            elif selected_range is not None:
+                # Use preset range, handling None for max
+                preset_min, preset_max = selected_range
+                if preset_max is None:
+                    preset_max = max_val  # Use full range max
+                if preset_min < min_val:
+                    preset_min = min_val
+                if preset_max > max_val:
+                    preset_max = max_val
+                fire_filters[severity] = (preset_min, preset_max)
+            # If "No Filter" selected, don't add to fire_filters
     
     st.markdown("---")
     
@@ -249,9 +303,9 @@ if bps_name_search and bps_name_search.strip():
 fire_freq_conditions = []
 if fire_filters:
     for severity, (min_val, max_val) in fire_filters.items():
-        # Only add condition if slider is not at full range
+        # Add condition for any selected range (presets or custom)
         range_info = fire_ranges.get(severity, {})
-        if range_info and (min_val != range_info['min'] or max_val != range_info['max']):
+        if range_info:
             fire_freq_conditions.append(f"""
                 EXISTS (
                     SELECT 1 FROM fire_frequency ff
