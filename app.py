@@ -145,8 +145,33 @@ with st.sidebar:
     bps_name_search = st.text_input(
         "🏷️ BPS Name Contains",
         placeholder="e.g., Oak, Aspen, Forest",
-        help="Filter by BPS name keywords"
+        help="Searches the 'bps_name' field in the ref_con_long table. Examples: 'Oak Woodland', 'Aspen Forest', 'Mountain'. This is the full Biophysical Setting name."
     )
+    
+    st.markdown("---")
+    
+    # Fire Frequency Filters
+    st.markdown("**🔥 Fire Frequency Filters**")
+    
+    # Store slider values
+    fire_filters = {}
+    
+    # Create sliders for each severity category
+    severity_order = ['All Fires', 'Low (Surface)', 'Moderate (Mixed)', 'Replacement']
+    for severity in severity_order:
+        if severity in fire_ranges:
+            range_info = fire_ranges[severity]
+            min_val = range_info['min']
+            max_val = range_info['max']
+            
+            slider_values = st.slider(
+                f"{severity} Return Interval (years)",
+                min_value=min_val,
+                max_value=max_val,
+                value=(min_val, max_val),
+                help=f"Filter models by {severity} fire return interval. Range: {min_val}-{max_val} years. Searches the fire_frequency table."
+            )
+            fire_filters[severity] = slider_values
     
     st.markdown("---")
     
