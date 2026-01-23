@@ -81,6 +81,28 @@ def get_unique_map_zones():
                     pass
     return sorted(list(zones))
 
+@st.cache_data
+def get_fire_frequency_ranges():
+    """Get min/max return intervals for each severity category"""
+    query = """
+    SELECT 
+        severity,
+        MIN("return_interval(years)") as min_val,
+        MAX("return_interval(years)") as max_val
+    FROM fire_frequency
+    WHERE severity IS NOT NULL
+    GROUP BY severity
+    """
+    df = run_query(query)
+    ranges = {}
+    for _, row in df.iterrows():
+        if pd.notna(row['min_val']) and pd.notna(row['max_val']):
+            ranges[row['severity']] = {
+                'min': int(row['min_val']),
+                'max': int(row['max_val'])
+            }
+    return ranges
+
 # Main title
 st.title("🌲 BPS Database Explorer - Model Search")
 st.markdown("---")
@@ -88,6 +110,7 @@ st.markdown("---")
 # Get filter options
 vegetation_types = get_vegetation_types()
 map_zones_list = get_unique_map_zones()
+fire_ranges = get_fire_frequency_ranges()
 
 # Create filter sidebar
 with st.sidebar:
@@ -189,6 +212,27 @@ if map_zone_input and map_zone_input.strip():
 if bps_name_search and bps_name_search.strip():
     query_conditions.append("rcl.bps_name LIKE ?")
     query_params.append(f"%{bps_name_search.strip()}%")
+
+# Fire Frequency filters
+fire_freq_conditions = []
+if fire_filters:
+    for severity, (min_val, max_val) in fire_filters.items():
+        # Only add condition if slider is not at full range
+        range_info = fire_ranges.get(severity, {})
+        if range_info and (min_val != range_info['min'] or max_val != range_info['max']):
+            fire_freq_conditions.append(f"""
+                EXISTS (
+                    SELECT 1 FROM fire_frequency ff
+                    WHERE ff.bps_model_id = bm.bps_model_id
+                    AND ff.severity = ?
+                    AND ff."return_interval(years)" >= ?
+                    AND ff."return_interval(years)" <= ?
+                )
+            """)
+            query_params.extend([severity, min_val, max_val])
+    
+    if fire_freq_conditions:
+        query_conditions.append(f"({' AND '.join(fire_freq_conditions)})")
 
 # Build final query
 if query_conditions:
