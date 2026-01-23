@@ -246,7 +246,21 @@ with st.sidebar:
         help="Maximum number of model results to display. Results come from the bps_models table joined with ref_con_long table."
     )
     
+    st.markdown("---")
+    
+    # Display Options
+    st.markdown("**📊 Display Options**")
+    st.caption("Choose what to show in results")
+    
+    show_model_id = st.checkbox("Model ID", value=True, key="disp_model_id")
+    show_bps_name = st.checkbox("BPS Name", value=True, key="disp_bps_name")
+    show_vegetation_desc = st.checkbox("Vegetation Description", value=False, key="disp_veg_desc")
+    show_geographic_range = st.checkbox("Geographic Range", value=False, key="disp_geo_range")
+    show_document = st.checkbox("Document Download", value=True, key="disp_document")
+    show_fire_charts = st.checkbox("Fire Regime Charts", value=False, key="disp_fire_charts")
+    
     # Clear filters button
+    st.markdown("---")
     if st.button("🔄 Clear All Filters", use_container_width=True):
         st.rerun()
 
@@ -329,6 +343,8 @@ if query_conditions:
         bm.vegetation_type,
         bm.map_zones,
         bm.document,
+        bm.vegetation_description,
+        bm.geographic_range,
         rcl.bps_name
     FROM bps_models bm
     LEFT JOIN ref_con_long rcl ON bm.bps_model_id = rcl.bps_model_id
@@ -383,38 +399,111 @@ if query_conditions:
             title = " ".join(title_parts)
             
             with st.expander(title):
-                col1, col2 = st.columns([2, 1])
+                # Display sections based on user preferences
+                sections = []
                 
-                with col1:
-                    if pd.notna(row['bps_name']) and row['bps_name']:
-                        st.markdown(f"**BPS Name:** {row['bps_name']}")
-                    
-                    st.markdown(f"**Model ID:** `{row['bps_model_id']}`")
-                    
-                    if pd.notna(row['vegetation_type']) and row['vegetation_type']:
-                        st.markdown(f"**Vegetation Type:** {row['vegetation_type']}")
-                    
-                    if pd.notna(row['map_zones']) and row['map_zones']:
-                        st.markdown(f"**Map Zones:** {row['map_zones']}")
+                # Model ID section
+                if show_model_id:
+                    sections.append(("Model ID", f"`{row['bps_model_id']}`"))
                 
-                with col2:
-                    st.markdown("**Document:**")
-                    if doc_exists and doc_path:
-                        # Create a download link for the document
-                        with open(doc_path, 'rb') as f:
-                            doc_bytes = f.read()
-                        st.download_button(
-                            label="📄 Download Document",
-                            data=doc_bytes,
-                            file_name=row['document'],
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            key=f"download_{idx}"
-                        )
-                        st.caption(f"File: {row['document']}")
-                    elif row['document']:
-                        st.warning(f"Document not found: {row['document']}")
+                # BPS Name section
+                if show_bps_name and pd.notna(row['bps_name']) and row['bps_name']:
+                    sections.append(("BPS Name", row['bps_name']))
+                
+                # Vegetation Description section
+                if show_vegetation_desc and pd.notna(row['vegetation_description']) and row['vegetation_description']:
+                    veg_desc = str(row['vegetation_description'])
+                    # Truncate if very long
+                    if len(veg_desc) > 1000:
+                        veg_desc = veg_desc[:1000] + "..."
+                    sections.append(("Vegetation Description", veg_desc))
+                
+                # Geographic Range section
+                if show_geographic_range and pd.notna(row['geographic_range']) and row['geographic_range']:
+                    geo_range = str(row['geographic_range'])
+                    # Truncate if very long
+                    if len(geo_range) > 1000:
+                        geo_range = geo_range[:1000] + "..."
+                    sections.append(("Geographic Range", geo_range))
+                
+                # Document Download section
+                if show_document:
+                    sections.append(("Document", (doc_exists, doc_path, row['document'])))
+                
+                # Display sections in columns
+                if sections:
+                    col1, col2 = st.columns([2, 1])
+                    
+                    with col1:
+                        for section_name, section_content in sections:
+                            if section_name == "Document":
+                                continue  # Handle separately
+                            st.markdown(f"**{section_name}:**")
+                            if section_name in ["Vegetation Description", "Geographic Range"]:
+                                st.write(section_content)
+                            else:
+                                st.markdown(section_content)
+                            st.markdown("---")
+                    
+                    with col2:
+                        # Document download
+                        if show_document:
+                            st.markdown("**Document:**")
+                            doc_exists, doc_path, doc_name = [s[1] for s in sections if s[0] == "Document"][0]
+                            if doc_exists and doc_path:
+                                with open(doc_path, 'rb') as f:
+                                    doc_bytes = f.read()
+                                st.download_button(
+                                    label="📄 Download Document",
+                                    data=doc_bytes,
+                                    file_name=doc_name,
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    key=f"download_{row['bps_model_id']}_{idx}"
+                                )
+                                st.caption(f"File: {doc_name}")
+                            elif doc_name:
+                                st.warning(f"Document not found: {doc_name}")
+                            else:
+                                st.info("No document available")
+                
+                # Fire Regime Charts section
+                if show_fire_charts:
+                    st.markdown("---")
+                    st.markdown("**🔥 Fire Regime Charts**")
+                    
+                    # Get fire frequency data for this model
+                    fire_query = """
+                    SELECT 
+                        severity,
+                        "return_interval(years)" as return_interval,
+                        percent_of_all_fires as percent
+                    FROM fire_frequency
+                    WHERE bps_model_id = ?
+                    AND severity IS NOT NULL
+                    ORDER BY percent DESC
+                    """
+                    fire_df = run_query(fire_query, params=(row['bps_model_id'],))
+                    
+                    if len(fire_df) > 0:
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.subheader("Return Intervals by Severity")
+                            # Bar chart of return intervals
+                            chart_data = fire_df.set_index('severity')['return_interval']
+                            st.bar_chart(chart_data)
+                        
+                        with col2:
+                            st.subheader("Percent of All Fires")
+                            # Bar chart of percentages
+                            chart_data2 = fire_df.set_index('severity')['percent']
+                            st.bar_chart(chart_data2)
+                        
+                        # Data table
+                        st.markdown("**Fire Frequency Data:**")
+                        st.dataframe(fire_df, use_container_width=True, hide_index=True)
                     else:
-                        st.info("No document available")
+                        st.info("No fire frequency data available for this model.")
     else:
         st.warning("❌ No models found matching your filter criteria.")
         st.info("💡 Try adjusting your filters or clearing them to see more results.")
