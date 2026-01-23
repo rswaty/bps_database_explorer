@@ -134,7 +134,7 @@ query_conditions = []
 query_params = []
 
 # Text search
-if search_term:
+if search_term and search_term.strip():
     query_conditions.append("""
         (bm.bps_model_id LIKE ? OR
          bm.vegetation_type LIKE ? OR
@@ -143,7 +143,7 @@ if search_term:
          bm.vegetation_description LIKE ? OR
          rcl.bps_name LIKE ?)
     """)
-    search_pattern = f"%{search_term}%"
+    search_pattern = f"%{search_term.strip()}%"
     query_params.extend([search_pattern] * 6)
 
 # Vegetation Type filter
@@ -160,16 +160,22 @@ if map_zone_input:
             # Create condition to check if any of the zones appear in map_zones
             zone_conditions = []
             for zone in zone_numbers:
-                zone_conditions.append("(bm.map_zones LIKE ? OR bm.map_zones LIKE ? OR bm.map_zones = ?)")
-                query_params.extend([f"%, {zone},%", f"{zone},%", str(zone)])
+                zone_conditions.append("(bm.map_zones LIKE ? OR bm.map_zones LIKE ? OR bm.map_zones = ? OR bm.map_zones LIKE ?)")
+                query_params.extend([
+                    f"%, {zone},%",  # Zone in middle: ", 7,"
+                    f"{zone},%",     # Zone at start: "7,"
+                    str(zone),       # Exact match: "7"
+                    f"%{zone}%"      # Zone anywhere (fallback)
+                ])
             query_conditions.append(f"({' OR '.join(zone_conditions)})")
-    except:
+    except Exception as e:
+        st.warning(f"Error parsing map zones: {e}")
         pass
 
 # BPS Name filter
-if bps_name_search:
+if bps_name_search and bps_name_search.strip():
     query_conditions.append("rcl.bps_name LIKE ?")
-    query_params.append(f"%{bps_name_search}%")
+    query_params.append(f"%{bps_name_search.strip()}%")
 
 # Build final query
 if query_conditions:
@@ -189,8 +195,14 @@ if query_conditions:
     """
     query_params.append(limit)
     
-    # Execute query
-    df = run_query(query, params=tuple(query_params) if query_params else None)
+    # Execute query - ensure params is a tuple
+    try:
+        df = run_query(query, params=tuple(query_params))
+    except Exception as e:
+        st.error(f"Query error: {str(e)}")
+        st.code(query)
+        st.write("Parameters:", query_params)
+        df = pd.DataFrame()  # Empty dataframe on error
     
     # Display results
     if len(df) > 0:
