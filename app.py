@@ -16,9 +16,17 @@ st.set_page_config(
 DB_PATH = Path(__file__).parent / "bps_database.db"
 DOCS_PATH = Path(__file__).parent / "all_bps_docs"
 
+# Check if database exists
+if not DB_PATH.exists():
+    st.error(f"❌ Database file not found at: {DB_PATH}")
+    st.error("Please make sure bps_database.db is in the repository.")
+    st.stop()
+
 @st.cache_resource
 def get_connection():
     """Create and cache database connection"""
+    if not DB_PATH.exists():
+        raise FileNotFoundError(f"Database file not found: {DB_PATH}")
     return sqlite3.connect(str(DB_PATH))
 
 @st.cache_data
