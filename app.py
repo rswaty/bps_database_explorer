@@ -85,7 +85,7 @@ with st.sidebar:
     search_term = st.text_input(
         "Search Text",
         placeholder="Model ID, BPS Name, or keywords...",
-        help="Search in Model ID, BPS Name, or descriptions"
+        help="Searches across: Model ID, Vegetation Type, Geographic Range, Biophysical Site Description, Vegetation Description, and BPS Name fields in the database tables (bps_models and ref_con_long). Does NOT search document content."
     )
     
     st.markdown("---")
@@ -95,7 +95,7 @@ with st.sidebar:
         "🌳 Vegetation Type",
         vegetation_types,
         index=0,
-        help="Filter by vegetation type"
+        help="Filters by the 'vegetation_type' field in the bps_models table. Examples: Forest and Woodland, Shrubland, Herbaceous, etc."
     )
     
     # Map Zone filter
@@ -103,7 +103,7 @@ with st.sidebar:
     map_zone_input = st.text_input(
         "Enter zone numbers (comma-separated)",
         placeholder="e.g., 1, 2, 3 or 7",
-        help="Enter one or more map zone numbers separated by commas"
+        help="Searches the 'map_zones' field in the bps_models table. Enter zone numbers like '1, 2, 3' or just '7'. Matches models where any of these zones appear in the comma-separated map_zones field."
     )
     
     # BPS Name filter
@@ -122,7 +122,7 @@ with st.sidebar:
         max_value=500,
         value=50,
         step=10,
-        help="Maximum number of results to display"
+        help="Maximum number of model results to display. Results come from the bps_models table joined with ref_con_long table."
     )
     
     # Clear filters button
