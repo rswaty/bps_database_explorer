@@ -41,10 +41,22 @@ def run_query(query, params=None):
 
 @st.cache_data
 def get_vegetation_types():
-    """Get list of unique vegetation types"""
+    """Get list of unique vegetation types - cleaned to remove map zone data"""
     query = "SELECT DISTINCT vegetation_type FROM bps_models WHERE vegetation_type IS NOT NULL ORDER BY vegetation_type"
     df = run_query(query)
-    return ['All'] + df['vegetation_type'].dropna().unique().tolist()
+    
+    # Clean vegetation types - extract only the text before newlines or "Map Zone"
+    cleaned_types = set()
+    for veg_type in df['vegetation_type'].dropna():
+        if veg_type:
+            # Split by newline and take first part, or split by "Map Zone" and take first part
+            cleaned = str(veg_type).split('\n')[0].split('Map Zone')[0].strip()
+            if cleaned:
+                cleaned_types.add(cleaned)
+    
+    # Sort and return
+    sorted_types = sorted(list(cleaned_types))
+    return ['All'] + sorted_types
 
 @st.cache_data
 def get_unique_map_zones():
@@ -148,8 +160,9 @@ if search_term and search_term.strip():
 
 # Vegetation Type filter
 if selected_vegetation and selected_vegetation != 'All':
-    query_conditions.append("bm.vegetation_type = ?")
-    query_params.append(selected_vegetation)
+    # Use LIKE to match vegetation type even if it has map zone data appended
+    query_conditions.append("bm.vegetation_type LIKE ?")
+    query_params.append(f"{selected_vegetation}%")
 
 # Map Zone filter
 if map_zone_input and map_zone_input.strip():
