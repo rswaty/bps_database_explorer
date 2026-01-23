@@ -24,20 +24,27 @@ if not DB_PATH.exists():
 
 @st.cache_resource
 def get_connection():
-    """Create and cache database connection"""
+    """Create and cache database connection - thread-safe for Streamlit"""
     if not DB_PATH.exists():
         raise FileNotFoundError(f"Database file not found: {DB_PATH}")
-    return sqlite3.connect(str(DB_PATH))
+    # Use check_same_thread=False to allow connections across Streamlit threads
+    # This is safe for read-only operations
+    return sqlite3.connect(str(DB_PATH), check_same_thread=False)
 
 @st.cache_data
 def run_query(query, params=None):
     """Execute a query and return results as DataFrame"""
-    conn = get_connection()
-    if params:
-        df = pd.read_sql_query(query, conn, params=params)
-    else:
-        df = pd.read_sql_query(query, conn)
-    return df
+    # Create a new connection for each query to avoid thread issues
+    # This is safe because SQLite handles concurrent reads well
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    try:
+        if params:
+            df = pd.read_sql_query(query, conn, params=params)
+        else:
+            df = pd.read_sql_query(query, conn)
+        return df
+    finally:
+        conn.close()
 
 @st.cache_data
 def get_vegetation_types():
