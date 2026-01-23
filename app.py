@@ -152,7 +152,7 @@ if selected_vegetation and selected_vegetation != 'All':
     query_params.append(selected_vegetation)
 
 # Map Zone filter
-if map_zone_input:
+if map_zone_input and map_zone_input.strip():
     # Parse comma-separated zone numbers
     try:
         zone_numbers = [int(z.strip()) for z in map_zone_input.split(',') if z.strip().isdigit()]
@@ -169,7 +169,7 @@ if map_zone_input:
                 ])
             query_conditions.append(f"({' OR '.join(zone_conditions)})")
     except Exception as e:
-        st.warning(f"Error parsing map zones: {e}")
+        st.warning(f"⚠️ Error parsing map zones: {e}")
         pass
 
 # BPS Name filter
