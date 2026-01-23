@@ -486,19 +486,11 @@ if query_conditions:
                     fire_df = run_query(fire_query, params=(row['bps_model_id'],))
                     
                     if len(fire_df) > 0:
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            st.subheader("Return Intervals by Severity")
-                            # Bar chart of return intervals
-                            chart_data = fire_df.set_index('severity')['return_interval']
-                            st.bar_chart(chart_data)
-                        
-                        with col2:
-                            st.subheader("Percent of All Fires")
-                            # Bar chart of percentages
-                            chart_data2 = fire_df.set_index('severity')['percent']
-                            st.bar_chart(chart_data2)
+                        st.subheader("Return Intervals by Severity")
+                        # Horizontal bar chart of return intervals
+                        chart_data = fire_df.set_index('severity')['return_interval']
+                        # Use bar_chart with orientation='h' equivalent by transposing
+                        st.bar_chart(chart_data, use_container_width=True)
                         
                         # Data table
                         st.markdown("**Fire Frequency Data:**")
