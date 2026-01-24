@@ -748,6 +748,9 @@ if query_conditions:
                         
                         # Fire Regime Charts data
                         if pdf_show_fire_charts:
+                            story.append(Paragraph("<b>Fire Regime Data:</b>", styles['Normal']))
+                            story.append(Spacer(1, 0.05*inch))
+                            
                             fire_query = """
                             SELECT 
                                 severity,
@@ -762,17 +765,13 @@ if query_conditions:
                                 fire_df_report = run_query(fire_query, params=(model_id,))
                                 
                                 if len(fire_df_report) > 0:
-                                    story.append(Paragraph("<b>Fire Regime Data:</b>", styles['Normal']))
-                                    story.append(Spacer(1, 0.05*inch))
-                                    
                                     # Create table
                                     table_data = [['Severity', 'Return Interval (years)', 'Percent of All Fires']]
                                     for _, fire_row in fire_df_report.iterrows():
-                                        table_data.append([
-                                            str(fire_row['severity']),
-                                            f"{fire_row['return_interval']:.1f}",
-                                            f"{fire_row['percent']:.1f}%"
-                                        ])
+                                        severity = str(fire_row['severity']) if pd.notna(fire_row['severity']) else 'N/A'
+                                        return_int = f"{fire_row['return_interval']:.1f}" if pd.notna(fire_row['return_interval']) else 'N/A'
+                                        percent = f"{fire_row['percent']:.1f}%" if pd.notna(fire_row['percent']) else 'N/A'
+                                        table_data.append([severity, return_int, percent])
                                     
                                     fire_table = Table(table_data, colWidths=[2*inch, 2*inch, 2*inch])
                                     fire_table.setStyle(TableStyle([
@@ -788,10 +787,10 @@ if query_conditions:
                                     story.append(fire_table)
                                     story.append(Spacer(1, 0.2*inch))
                                 else:
-                                    story.append(Paragraph("<i>No fire frequency data available for this model.</i>", styles['Normal']))
+                                    story.append(Paragraph("<i>No fire frequency data available for this model.</i>", styles['Italic']))
                                     story.append(Spacer(1, 0.1*inch))
                             except Exception as e:
-                                story.append(Paragraph(f"<i>Error loading fire data: {str(e)}</i>", styles['Normal']))
+                                story.append(Paragraph(f"<i>Error loading fire data for model {model_id}: {str(e)}</i>", styles['Italic']))
                                 story.append(Spacer(1, 0.1*inch))
                         
                         story.append(PageBreak())
