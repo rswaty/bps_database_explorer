@@ -618,8 +618,15 @@ if query_conditions:
             
             with col_dl2:
                 # Create PDF report function - capture current display options
+                # Store display options in local variables to ensure they're captured
+                pdf_show_model_id = show_model_id
+                pdf_show_bps_name = show_bps_name
+                pdf_show_vegetation_desc = show_vegetation_desc
+                pdf_show_geographic_range = show_geographic_range
+                pdf_show_fire_charts = show_fire_charts
+                
                 def create_pdf_report():
-                    # Use current display option values from outer scope
+                    # Use captured display option values
                     buffer = io.BytesIO()
                     doc = SimpleDocTemplate(buffer, pagesize=letter)
                     story = []
@@ -647,15 +654,15 @@ if query_conditions:
                     
                     # Display options summary
                     display_options_used = []
-                    if show_model_id:
+                    if pdf_show_model_id:
                         display_options_used.append("Model ID")
-                    if show_bps_name:
+                    if pdf_show_bps_name:
                         display_options_used.append("BPS Name")
-                    if show_vegetation_desc:
+                    if pdf_show_vegetation_desc:
                         display_options_used.append("Vegetation Description")
-                    if show_geographic_range:
+                    if pdf_show_geographic_range:
                         display_options_used.append("Geographic Range")
-                    if show_fire_charts:
+                    if pdf_show_fire_charts:
                         display_options_used.append("Fire Regime Charts")
                     
                     if display_options_used:
@@ -685,17 +692,17 @@ if query_conditions:
                         story.append(Paragraph(model_title, header_style))
                         
                         # Model ID
-                        if show_model_id:
+                        if pdf_show_model_id:
                             story.append(Paragraph(f"<b>Model ID:</b> {row['bps_model_id']}", styles['Normal']))
                             story.append(Spacer(1, 0.1*inch))
                         
                         # BPS Name
-                        if show_bps_name and pd.notna(row['bps_name']) and row['bps_name']:
+                        if pdf_show_bps_name and pd.notna(row['bps_name']) and row['bps_name']:
                             story.append(Paragraph(f"<b>BPS Name:</b> {row['bps_name']}", styles['Normal']))
                             story.append(Spacer(1, 0.1*inch))
                         
                         # Vegetation Description
-                        if show_vegetation_desc and pd.notna(row['vegetation_description']) and row['vegetation_description']:
+                        if pdf_show_vegetation_desc and pd.notna(row['vegetation_description']) and row['vegetation_description']:
                             veg_desc = str(row['vegetation_description'])
                             # Show full description in PDF - split into paragraphs if very long
                             story.append(Paragraph("<b>Vegetation Description:</b>", styles['Normal']))
@@ -718,7 +725,7 @@ if query_conditions:
                             story.append(Spacer(1, 0.1*inch))
                         
                         # Geographic Range
-                        if show_geographic_range and pd.notna(row['geographic_range']) and row['geographic_range']:
+                        if pdf_show_geographic_range and pd.notna(row['geographic_range']) and row['geographic_range']:
                             geo_range = str(row['geographic_range'])
                             # Show full range in PDF - split into paragraphs if very long
                             story.append(Paragraph("<b>Geographic Range:</b>", styles['Normal']))
@@ -740,7 +747,7 @@ if query_conditions:
                             story.append(Spacer(1, 0.1*inch))
                         
                         # Fire Regime Charts data
-                        if show_fire_charts:
+                        if pdf_show_fire_charts:
                             fire_query = """
                             SELECT 
                                 severity,
