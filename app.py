@@ -247,19 +247,6 @@ with st.sidebar:
         help="Maximum number of model results to display. Results come from the bps_models table joined with ref_con_long table."
     )
     
-    st.markdown("---")
-    
-    # Display Options
-    st.markdown("**📊 Display Options**")
-    st.caption("Choose what to show in results")
-    
-    show_model_id = st.checkbox("Model ID", value=True, key="disp_model_id")
-    show_bps_name = st.checkbox("BPS Name", value=True, key="disp_bps_name")
-    show_vegetation_desc = st.checkbox("Vegetation Description", value=False, key="disp_veg_desc")
-    show_geographic_range = st.checkbox("Geographic Range", value=False, key="disp_geo_range")
-    show_document = st.checkbox("Document Download", value=True, key="disp_document")
-    show_fire_charts = st.checkbox("Fire Regime Charts", value=False, key="disp_fire_charts")
-    
     # Clear filters button
     st.markdown("---")
     if st.button("🔄 Clear All Filters", use_container_width=True):
@@ -363,6 +350,28 @@ if query_conditions:
         st.code(query)
         st.write("Parameters:", query_params)
         df = pd.DataFrame()  # Empty dataframe on error
+
+# Display Options - Above Results
+if query_conditions:
+    st.markdown("---")
+    col_left, col_right = st.columns([2, 1])
+    
+    with col_left:
+        st.markdown("")  # Spacer
+    
+    with col_right:
+        with st.container():
+            st.markdown("**📊 Display Options**")
+            st.caption("Choose what to show in results")
+            
+            show_model_id = st.checkbox("Model ID", value=True, key="disp_model_id")
+            show_bps_name = st.checkbox("BPS Name", value=True, key="disp_bps_name")
+            show_vegetation_desc = st.checkbox("Vegetation Description", value=False, key="disp_veg_desc")
+            show_geographic_range = st.checkbox("Geographic Range", value=False, key="disp_geo_range")
+            show_document = st.checkbox("Document Download", value=True, key="disp_document")
+            show_fire_charts = st.checkbox("Fire Regime Charts", value=False, key="disp_fire_charts")
+    
+    st.markdown("---")
     
     # Display results
     if len(df) > 0:
@@ -508,6 +517,13 @@ if query_conditions:
         st.warning("❌ No models found matching your filter criteria.")
         st.info("💡 Try adjusting your filters or clearing them to see more results.")
 else:
+    # Set default display options when no filters applied
+    show_model_id = True
+    show_bps_name = True
+    show_vegetation_desc = False
+    show_geographic_range = False
+    show_document = True
+    show_fire_charts = False
     # No filters applied - show info
     st.info("👆 Use the filters in the sidebar to search for models")
     st.markdown("---")
