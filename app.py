@@ -776,37 +776,56 @@ if query_conditions:
                                 pdf_conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
                                 fire_df_report = pd.read_sql_query(fire_query, pdf_conn, params=(model_id,))
                                 pdf_conn.close()
+                                
+                                # Debug: Always show what we got
+                                if fire_df_report is None:
+                                    error_msg = "Query returned None"
+                                elif len(fire_df_report) == 0:
+                                    error_msg = f"No fire data found for model {model_id}"
+                                    
                             except Exception as e:
-                                error_msg = str(e)
+                                error_msg = f"Database error: {str(e)}"
                                 fire_df_report = None
                             
+                            # Always show something when fire charts option is enabled
                             if error_msg:
-                                story.append(Paragraph(f"<i>Error loading fire data: {error_msg}</i>", styles['Italic']))
+                                story.append(Paragraph(f"<i>{error_msg}</i>", styles['Italic']))
                                 story.append(Spacer(1, 0.1*inch))
                             elif fire_df_report is not None and len(fire_df_report) > 0:
-                                # Create table
-                                table_data = [['Severity', 'Return Interval (years)', 'Percent of All Fires']]
-                                for _, fire_row in fire_df_report.iterrows():
-                                    severity = str(fire_row['severity']) if pd.notna(fire_row['severity']) else 'N/A'
-                                    return_int = f"{fire_row['return_interval']:.1f}" if pd.notna(fire_row['return_interval']) else 'N/A'
-                                    percent = f"{fire_row['percent']:.1f}%" if pd.notna(fire_row['percent']) else 'N/A'
-                                    table_data.append([severity, return_int, percent])
-                                
-                                fire_table = Table(table_data, colWidths=[2*inch, 2*inch, 2*inch])
-                                fire_table.setStyle(TableStyle([
-                                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                                    ('FONTSIZE', (0, 0), (-1, 0), 10),
-                                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                                ]))
-                                story.append(fire_table)
-                                story.append(Spacer(1, 0.2*inch))
+                                # Create table - ensure we have data
+                                try:
+                                    table_data = [['Severity', 'Return Interval (years)', 'Percent of All Fires']]
+                                    for _, fire_row in fire_df_report.iterrows():
+                                        severity = str(fire_row['severity']) if pd.notna(fire_row['severity']) else 'N/A'
+                                        return_int_val = fire_row['return_interval']
+                                        return_int = f"{return_int_val:.1f}" if pd.notna(return_int_val) else 'N/A'
+                                        percent_val = fire_row['percent']
+                                        percent = f"{percent_val:.1f}%" if pd.notna(percent_val) else 'N/A'
+                                        table_data.append([severity, return_int, percent])
+                                    
+                                    # Only create table if we have data rows
+                                    if len(table_data) > 1:  # More than just header
+                                        fire_table = Table(table_data, colWidths=[2*inch, 2*inch, 2*inch])
+                                        fire_table.setStyle(TableStyle([
+                                            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                                            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                                            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                                            ('FONTSIZE', (0, 0), (-1, 0), 10),
+                                            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                                            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                                            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                                        ]))
+                                        story.append(fire_table)
+                                        story.append(Spacer(1, 0.2*inch))
+                                    else:
+                                        story.append(Paragraph(f"<i>Fire data query returned empty results for model {model_id}.</i>", styles['Italic']))
+                                        story.append(Spacer(1, 0.1*inch))
+                                except Exception as table_error:
+                                    story.append(Paragraph(f"<i>Error creating fire data table: {str(table_error)}</i>", styles['Italic']))
+                                    story.append(Spacer(1, 0.1*inch))
                             else:
-                                story.append(Paragraph(f"<i>No fire frequency data found for model {model_id}.</i>", styles['Italic']))
+                                story.append(Paragraph(f"<i>No fire frequency data found for model {model_id}. Query returned: {fire_df_report}</i>", styles['Italic']))
                                 story.append(Spacer(1, 0.1*inch))
                         
                         story.append(PageBreak())
