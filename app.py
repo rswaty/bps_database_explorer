@@ -6,10 +6,13 @@ import os
 import altair as alt
 import zipfile
 import io
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+import matplotlib.pyplot as plt
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Image
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT, TA_CENTER
 
@@ -805,6 +808,37 @@ if query_conditions:
                                     
                                     # Only create table if we have data rows
                                     if len(table_data) > 1:  # More than just header
+                                        # Create horizontal bar chart
+                                        try:
+                                            fig, ax = plt.subplots(figsize=(6, 3))
+                                            severities = fire_df_report['severity'].tolist()
+                                            return_intervals = fire_df_report['return_interval'].tolist()
+                                            
+                                            # Create horizontal bar chart
+                                            y_pos = range(len(severities))
+                                            ax.barh(y_pos, return_intervals, color='steelblue')
+                                            ax.set_yticks(y_pos)
+                                            ax.set_yticklabels(severities)
+                                            ax.set_xlabel('Return Interval (years)')
+                                            ax.set_title('Fire Return Intervals by Severity')
+                                            ax.invert_yaxis()  # Top to bottom
+                                            
+                                            plt.tight_layout()
+                                            
+                                            # Save to buffer
+                                            chart_buffer = io.BytesIO()
+                                            plt.savefig(chart_buffer, format='png', dpi=100, bbox_inches='tight')
+                                            chart_buffer.seek(0)
+                                            plt.close()
+                                            
+                                            # Add chart image to PDF
+                                            chart_img = Image(chart_buffer, width=5*inch, height=2.5*inch)
+                                            story.append(chart_img)
+                                            story.append(Spacer(1, 0.1*inch))
+                                        except Exception as chart_error:
+                                            story.append(Paragraph(f"<i>Could not generate chart: {str(chart_error)}</i>", styles['Italic']))
+                                        
+                                        # Add data table
                                         fire_table = Table(table_data, colWidths=[2*inch, 2*inch, 2*inch])
                                         fire_table.setStyle(TableStyle([
                                             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
