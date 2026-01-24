@@ -772,9 +772,13 @@ if query_conditions:
                             error_msg = None
                             
                             try:
-                                fire_df_report = run_query(fire_query, params=(model_id,))
+                                # Use direct connection for PDF generation (avoid caching issues)
+                                pdf_conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+                                fire_df_report = pd.read_sql_query(fire_query, pdf_conn, params=(model_id,))
+                                pdf_conn.close()
                             except Exception as e:
                                 error_msg = str(e)
+                                fire_df_report = None
                             
                             if error_msg:
                                 story.append(Paragraph(f"<i>Error loading fire data: {error_msg}</i>", styles['Italic']))
