@@ -617,8 +617,9 @@ if query_conditions:
                     st.warning("No documents found for selected models")
             
             with col_dl2:
-                # Create PDF report function
+                # Create PDF report function - capture current display options
                 def create_pdf_report():
+                    # Use current display option values from outer scope
                     buffer = io.BytesIO()
                     doc = SimpleDocTemplate(buffer, pagesize=letter)
                     story = []
@@ -643,6 +644,23 @@ if query_conditions:
                     
                     story.append(Paragraph(f"<b>Total Models:</b> {num_selected}", styles['Normal']))
                     story.append(Spacer(1, 0.3*inch))
+                    
+                    # Display options summary
+                    display_options_used = []
+                    if show_model_id:
+                        display_options_used.append("Model ID")
+                    if show_bps_name:
+                        display_options_used.append("BPS Name")
+                    if show_vegetation_desc:
+                        display_options_used.append("Vegetation Description")
+                    if show_geographic_range:
+                        display_options_used.append("Geographic Range")
+                    if show_fire_charts:
+                        display_options_used.append("Fire Regime Charts")
+                    
+                    if display_options_used:
+                        story.append(Paragraph(f"<b>Display Options:</b> {', '.join(display_options_used)}", styles['Normal']))
+                        story.append(Spacer(1, 0.2*inch))
                     
                     # Process each selected model
                     for model_id in sorted(st.session_state.selected_models):
@@ -733,34 +751,41 @@ if query_conditions:
                             AND severity IS NOT NULL
                             ORDER BY percent DESC
                             """
-                            fire_df_report = run_query(fire_query, params=(model_id,))
-                            
-                            if len(fire_df_report) > 0:
-                                story.append(Paragraph("<b>Fire Regime Data:</b>", styles['Normal']))
-                                story.append(Spacer(1, 0.05*inch))
+                            try:
+                                fire_df_report = run_query(fire_query, params=(model_id,))
                                 
-                                # Create table
-                                table_data = [['Severity', 'Return Interval (years)', 'Percent of All Fires']]
-                                for _, fire_row in fire_df_report.iterrows():
-                                    table_data.append([
-                                        str(fire_row['severity']),
-                                        f"{fire_row['return_interval']:.1f}",
-                                        f"{fire_row['percent']:.1f}%"
-                                    ])
-                                
-                                fire_table = Table(table_data, colWidths=[2*inch, 2*inch, 2*inch])
-                                fire_table.setStyle(TableStyle([
-                                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                                    ('FONTSIZE', (0, 0), (-1, 0), 10),
-                                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                                ]))
-                                story.append(fire_table)
-                                story.append(Spacer(1, 0.2*inch))
+                                if len(fire_df_report) > 0:
+                                    story.append(Paragraph("<b>Fire Regime Data:</b>", styles['Normal']))
+                                    story.append(Spacer(1, 0.05*inch))
+                                    
+                                    # Create table
+                                    table_data = [['Severity', 'Return Interval (years)', 'Percent of All Fires']]
+                                    for _, fire_row in fire_df_report.iterrows():
+                                        table_data.append([
+                                            str(fire_row['severity']),
+                                            f"{fire_row['return_interval']:.1f}",
+                                            f"{fire_row['percent']:.1f}%"
+                                        ])
+                                    
+                                    fire_table = Table(table_data, colWidths=[2*inch, 2*inch, 2*inch])
+                                    fire_table.setStyle(TableStyle([
+                                        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                                        ('FONTSIZE', (0, 0), (-1, 0), 10),
+                                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                                        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                                        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                                    ]))
+                                    story.append(fire_table)
+                                    story.append(Spacer(1, 0.2*inch))
+                                else:
+                                    story.append(Paragraph("<i>No fire frequency data available for this model.</i>", styles['Normal']))
+                                    story.append(Spacer(1, 0.1*inch))
+                            except Exception as e:
+                                story.append(Paragraph(f"<i>Error loading fire data: {str(e)}</i>", styles['Normal']))
+                                story.append(Spacer(1, 0.1*inch))
                         
                         story.append(PageBreak())
                     
