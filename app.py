@@ -619,11 +619,12 @@ if query_conditions:
             with col_dl2:
                 # Create PDF report function - capture current display options
                 # Store display options in local variables to ensure they're captured
-                pdf_show_model_id = show_model_id
-                pdf_show_bps_name = show_bps_name
-                pdf_show_vegetation_desc = show_vegetation_desc
-                pdf_show_geographic_range = show_geographic_range
-                pdf_show_fire_charts = show_fire_charts
+                # Debug: Print to verify values (will show in logs)
+                pdf_show_model_id = bool(show_model_id)
+                pdf_show_bps_name = bool(show_bps_name)
+                pdf_show_vegetation_desc = bool(show_vegetation_desc)
+                pdf_show_geographic_range = bool(show_geographic_range)
+                pdf_show_fire_charts = bool(show_fire_charts)
                 
                 def create_pdf_report():
                     # Use captured display option values
@@ -666,8 +667,13 @@ if query_conditions:
                         display_options_used.append("Fire Regime Charts")
                     
                     if display_options_used:
-                        story.append(Paragraph(f"<b>Display Options:</b> {', '.join(display_options_used)}", styles['Normal']))
+                        story.append(Paragraph(f"<b>Display Options Used:</b> {', '.join(display_options_used)}", styles['Normal']))
                         story.append(Spacer(1, 0.2*inch))
+                    
+                    # Debug info (will help verify fire charts is being checked)
+                    if pdf_show_fire_charts:
+                        story.append(Paragraph(f"<i>Note: Fire Regime Charts option is ENABLED - fire data will be included for each model.</i>", styles['Italic']))
+                        story.append(Spacer(1, 0.1*inch))
                     
                     # Process each selected model
                     for model_id in sorted(st.session_state.selected_models):
