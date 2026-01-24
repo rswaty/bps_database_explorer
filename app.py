@@ -4,6 +4,14 @@ import pandas as pd
 from pathlib import Path
 import os
 import altair as alt
+import zipfile
+import io
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
 
 # Page configuration
 st.set_page_config(
@@ -393,7 +401,195 @@ if query_conditions:
         
         st.markdown("---")
         
-        # Display results
+        # Bulk download options
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**📦 Bulk Downloads**")
+        
+        # Initialize session state for selected models
+        if 'selected_models' not in st.session_state:
+            st.session_state.selected_models = set()
+        
+        # Select all / Deselect all buttons
+        col_sel1, col_sel2 = st.columns(2)
+        with col_sel1:
+            if st.button("✅ Select All", use_container_width=True):
+                st.session_state.selected_models = set(df['bps_model_id'].tolist())
+                st.rerun()
+        with col_sel2:
+            if st.button("❌ Deselect All", use_container_width=True):
+                st.session_state.selected_models = set()
+                st.rerun()
+        
+        # Download buttons for selected models
+        if st.session_state.selected_models:
+            num_selected = len(st.session_state.selected_models)
+            col_dl1, col_dl2 = st.columns(2)
+            
+            with col_dl1:
+                # Create ZIP of selected documents
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    added_count = 0
+                    for model_id in st.session_state.selected_models:
+                        model_row = df[df['bps_model_id'] == model_id]
+                        if not model_row.empty:
+                            doc_name = model_row.iloc[0]['document']
+                            if pd.notna(doc_name):
+                                doc_path = DOCS_PATH / doc_name
+                                if doc_path.exists():
+                                    zip_file.write(doc_path, doc_name)
+                                    added_count += 1
+                
+                if added_count > 0:
+                    zip_buffer.seek(0)
+                    st.download_button(
+                        label=f"📦 Download {num_selected} Selected Documents (ZIP)",
+                        data=zip_buffer.getvalue(),
+                        file_name=f"bps_documents_{num_selected}_models.zip",
+                        mime="application/zip",
+                        use_container_width=True
+                    )
+                else:
+                    st.warning("No documents found for selected models")
+            
+            with col_dl2:
+                # Create PDF report function
+                def create_pdf_report():
+                    buffer = io.BytesIO()
+                    doc = SimpleDocTemplate(buffer, pagesize=letter)
+                    story = []
+                    styles = getSampleStyleSheet()
+                    
+                    # Title
+                    title_style = ParagraphStyle(
+                        'CustomTitle',
+                        parent=styles['Heading1'],
+                        fontSize=18,
+                        textColor=colors.HexColor('#2E7D32'),
+                        spaceAfter=30,
+                        alignment=TA_CENTER
+                    )
+                    story.append(Paragraph("BPS Database Explorer - Report", title_style))
+                    story.append(Spacer(1, 0.2*inch))
+                    
+                    # Active filters
+                    if active_filters:
+                        story.append(Paragraph("<b>Active Filters:</b> " + " | ".join(active_filters), styles['Normal']))
+                        story.append(Spacer(1, 0.1*inch))
+                    
+                    story.append(Paragraph(f"<b>Total Models:</b> {num_selected}", styles['Normal']))
+                    story.append(Spacer(1, 0.3*inch))
+                    
+                    # Process each selected model
+                    for model_id in sorted(st.session_state.selected_models):
+                        model_row = df[df['bps_model_id'] == model_id]
+                        if model_row.empty:
+                            continue
+                        
+                        row = model_row.iloc[0]
+                        
+                        # Model header
+                        header_style = ParagraphStyle(
+                            'ModelHeader',
+                            parent=styles['Heading2'],
+                            fontSize=14,
+                            textColor=colors.HexColor('#1976D2'),
+                            spaceAfter=12,
+                            spaceBefore=12
+                        )
+                        model_title = f"{row['bps_model_id']}"
+                        if pd.notna(row['bps_name']) and row['bps_name']:
+                            model_title += f" - {row['bps_name']}"
+                        story.append(Paragraph(model_title, header_style))
+                        
+                        # Model ID
+                        if show_model_id:
+                            story.append(Paragraph(f"<b>Model ID:</b> {row['bps_model_id']}", styles['Normal']))
+                            story.append(Spacer(1, 0.1*inch))
+                        
+                        # BPS Name
+                        if show_bps_name and pd.notna(row['bps_name']) and row['bps_name']:
+                            story.append(Paragraph(f"<b>BPS Name:</b> {row['bps_name']}", styles['Normal']))
+                            story.append(Spacer(1, 0.1*inch))
+                        
+                        # Vegetation Description
+                        if show_vegetation_desc and pd.notna(row['vegetation_description']) and row['vegetation_description']:
+                            veg_desc = str(row['vegetation_description'])
+                            if len(veg_desc) > 2000:
+                                veg_desc = veg_desc[:2000] + "..."
+                            story.append(Paragraph("<b>Vegetation Description:</b>", styles['Normal']))
+                            story.append(Paragraph(veg_desc, styles['Normal']))
+                            story.append(Spacer(1, 0.1*inch))
+                        
+                        # Geographic Range
+                        if show_geographic_range and pd.notna(row['geographic_range']) and row['geographic_range']:
+                            geo_range = str(row['geographic_range'])
+                            if len(geo_range) > 2000:
+                                geo_range = geo_range[:2000] + "..."
+                            story.append(Paragraph("<b>Geographic Range:</b>", styles['Normal']))
+                            story.append(Paragraph(geo_range, styles['Normal']))
+                            story.append(Spacer(1, 0.1*inch))
+                        
+                        # Fire Regime Charts data
+                        if show_fire_charts:
+                            fire_query = """
+                            SELECT 
+                                severity,
+                                "return_interval(years)" as return_interval,
+                                percent_of_all_fires as percent
+                            FROM fire_frequency
+                            WHERE bps_model_id = ?
+                            AND severity IS NOT NULL
+                            ORDER BY percent DESC
+                            """
+                            fire_df_report = run_query(fire_query, params=(model_id,))
+                            
+                            if len(fire_df_report) > 0:
+                                story.append(Paragraph("<b>Fire Regime Data:</b>", styles['Normal']))
+                                story.append(Spacer(1, 0.05*inch))
+                                
+                                # Create table
+                                table_data = [['Severity', 'Return Interval (years)', 'Percent of All Fires']]
+                                for _, fire_row in fire_df_report.iterrows():
+                                    table_data.append([
+                                        str(fire_row['severity']),
+                                        f"{fire_row['return_interval']:.1f}",
+                                        f"{fire_row['percent']:.1f}%"
+                                    ])
+                                
+                                fire_table = Table(table_data, colWidths=[2*inch, 2*inch, 2*inch])
+                                fire_table.setStyle(TableStyle([
+                                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                                ]))
+                                story.append(fire_table)
+                                story.append(Spacer(1, 0.2*inch))
+                        
+                        story.append(PageBreak())
+                    
+                    doc.build(story)
+                    buffer.seek(0)
+                    return buffer.getvalue()
+                
+                pdf_data = create_pdf_report()
+                st.download_button(
+                    label=f"📄 Download PDF Report ({num_selected} models)",
+                    data=pdf_data,
+                    file_name=f"bps_report_{num_selected}_models.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+        
+        st.markdown("---")
+        
+        # Display results with checkboxes
         for idx, row in df.iterrows():
             # Create document link if document exists
             doc_path = DOCS_PATH / row['document'] if row['document'] else None
@@ -408,7 +604,25 @@ if query_conditions:
             
             title = " ".join(title_parts)
             
-            with st.expander(title):
+            # Checkbox for selection
+            model_id = row['bps_model_id']
+            is_selected = model_id in st.session_state.selected_models
+            
+            col_check, col_title = st.columns([0.1, 9.9])
+            with col_check:
+                selected = st.checkbox(
+                    "",
+                    value=is_selected,
+                    key=f"select_{model_id}",
+                    label_visibility="collapsed"
+                )
+                if selected and model_id not in st.session_state.selected_models:
+                    st.session_state.selected_models.add(model_id)
+                elif not selected and model_id in st.session_state.selected_models:
+                    st.session_state.selected_models.remove(model_id)
+            
+            with col_title:
+                with st.expander(title):
                 # Display sections based on user preferences
                 sections = []
                 
