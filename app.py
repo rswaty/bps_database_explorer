@@ -767,36 +767,42 @@ if query_conditions:
                             AND severity IS NOT NULL
                             ORDER BY percent DESC
                             """
+                            
+                            fire_df_report = None
+                            error_msg = None
+                            
                             try:
                                 fire_df_report = run_query(fire_query, params=(model_id,))
-                                
-                                if len(fire_df_report) > 0:
-                                    # Create table
-                                    table_data = [['Severity', 'Return Interval (years)', 'Percent of All Fires']]
-                                    for _, fire_row in fire_df_report.iterrows():
-                                        severity = str(fire_row['severity']) if pd.notna(fire_row['severity']) else 'N/A'
-                                        return_int = f"{fire_row['return_interval']:.1f}" if pd.notna(fire_row['return_interval']) else 'N/A'
-                                        percent = f"{fire_row['percent']:.1f}%" if pd.notna(fire_row['percent']) else 'N/A'
-                                        table_data.append([severity, return_int, percent])
-                                    
-                                    fire_table = Table(table_data, colWidths=[2*inch, 2*inch, 2*inch])
-                                    fire_table.setStyle(TableStyle([
-                                        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                                        ('FONTSIZE', (0, 0), (-1, 0), 10),
-                                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                                        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                                        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-                                    ]))
-                                    story.append(fire_table)
-                                    story.append(Spacer(1, 0.2*inch))
-                                else:
-                                    story.append(Paragraph("<i>No fire frequency data available for this model.</i>", styles['Italic']))
-                                    story.append(Spacer(1, 0.1*inch))
                             except Exception as e:
-                                story.append(Paragraph(f"<i>Error loading fire data for model {model_id}: {str(e)}</i>", styles['Italic']))
+                                error_msg = str(e)
+                            
+                            if error_msg:
+                                story.append(Paragraph(f"<i>Error loading fire data: {error_msg}</i>", styles['Italic']))
+                                story.append(Spacer(1, 0.1*inch))
+                            elif fire_df_report is not None and len(fire_df_report) > 0:
+                                # Create table
+                                table_data = [['Severity', 'Return Interval (years)', 'Percent of All Fires']]
+                                for _, fire_row in fire_df_report.iterrows():
+                                    severity = str(fire_row['severity']) if pd.notna(fire_row['severity']) else 'N/A'
+                                    return_int = f"{fire_row['return_interval']:.1f}" if pd.notna(fire_row['return_interval']) else 'N/A'
+                                    percent = f"{fire_row['percent']:.1f}%" if pd.notna(fire_row['percent']) else 'N/A'
+                                    table_data.append([severity, return_int, percent])
+                                
+                                fire_table = Table(table_data, colWidths=[2*inch, 2*inch, 2*inch])
+                                fire_table.setStyle(TableStyle([
+                                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                                    ('FONTSIZE', (0, 0), (-1, 0), 10),
+                                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                                    ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                                ]))
+                                story.append(fire_table)
+                                story.append(Spacer(1, 0.2*inch))
+                            else:
+                                story.append(Paragraph(f"<i>No fire frequency data found for model {model_id}.</i>", styles['Italic']))
                                 story.append(Spacer(1, 0.1*inch))
                         
                         story.append(PageBreak())
