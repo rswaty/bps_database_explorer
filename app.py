@@ -421,31 +421,8 @@ if query_conditions:
                 st.session_state.selected_models = set()
                 st.rerun()
         
-        # Instructions for bulk downloads
-        if st.session_state.selected_models:
-            num_selected = len(st.session_state.selected_models)
-            with st.expander("ℹ️ What's included in bulk downloads?", expanded=False):
-                st.markdown("""
-                **📦 ZIP Download (Selected Documents):**
-                - Contains all Word (.docx) documents for the selected models
-                - Only includes documents that exist in the database
-                - Files are named with their original document names
-                - Use this to download multiple model documents at once
-                
-                **📄 PDF Report:**
-                - Contains a formatted report with all selected models
-                - Includes only the display options you've selected:
-                  - Model ID (if enabled)
-                  - BPS Name (if enabled)
-                  - Vegetation Description (if enabled) - **Full text, not truncated**
-                  - Geographic Range (if enabled) - **Full text, not truncated**
-                  - Fire Regime Charts data (if enabled) - includes tables with severity, return intervals, and percentages
-                - Each model appears on its own page
-                - Shows active filters used for the search
-                - Perfect for sharing or printing reports
-                """)
-            
-            col_dl1, col_dl2 = st.columns(2)
+        # Note: Download buttons will be shown after checkboxes are processed
+        # to ensure accurate count
             
             with col_dl1:
                 # Create ZIP of selected documents
@@ -771,7 +748,34 @@ if query_conditions:
                             st.dataframe(fire_df, use_container_width=True, hide_index=True)
                         else:
                             st.info("No fire frequency data available for this model.")
-    else:
+        
+        # Download buttons for selected models - placed after checkbox processing
+        # to ensure accurate count
+        if st.session_state.selected_models:
+            num_selected = len(st.session_state.selected_models)  # Recalculate after checkboxes
+            st.markdown("---")
+            with st.expander("ℹ️ What's included in bulk downloads?", expanded=False):
+                st.markdown("""
+                **📦 ZIP Download (Selected Documents):**
+                - Contains all Word (.docx) documents for the selected models
+                - Only includes documents that exist in the database
+                - Files are named with their original document names
+                - Use this to download multiple model documents at once
+                
+                **📄 PDF Report:**
+                - Contains a formatted report with all selected models
+                - Includes only the display options you've selected:
+                  - Model ID (if enabled)
+                  - BPS Name (if enabled)
+                  - Vegetation Description (if enabled) - **Full text, not truncated**
+                  - Geographic Range (if enabled) - **Full text, not truncated**
+                  - Fire Regime Charts data (if enabled) - includes tables with severity, return intervals, and percentages
+                - Each model appears on its own page
+                - Shows active filters used for the search
+                - Perfect for sharing or printing reports
+                """)
+            
+            col_dl1, col_dl2 = st.columns(2)
         st.warning("❌ No models found matching your filter criteria.")
         st.info("💡 Try adjusting your filters or clearing them to see more results.")
 else:
