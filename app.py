@@ -421,9 +421,30 @@ if query_conditions:
                 st.session_state.selected_models = set()
                 st.rerun()
         
-        # Download buttons for selected models
+        # Instructions for bulk downloads
         if st.session_state.selected_models:
             num_selected = len(st.session_state.selected_models)
+            with st.expander("ℹ️ What's included in bulk downloads?", expanded=False):
+                st.markdown("""
+                **📦 ZIP Download (Selected Documents):**
+                - Contains all Word (.docx) documents for the selected models
+                - Only includes documents that exist in the database
+                - Files are named with their original document names
+                - Use this to download multiple model documents at once
+                
+                **📄 PDF Report:**
+                - Contains a formatted report with all selected models
+                - Includes only the display options you've selected:
+                  - Model ID (if enabled)
+                  - BPS Name (if enabled)
+                  - Vegetation Description (if enabled) - **Full text, not truncated**
+                  - Geographic Range (if enabled) - **Full text, not truncated**
+                  - Fire Regime Charts data (if enabled) - includes tables with severity, return intervals, and percentages
+                - Each model appears on its own page
+                - Shows active filters used for the search
+                - Perfect for sharing or printing reports
+                """)
+            
             col_dl1, col_dl2 = st.columns(2)
             
             with col_dl1:
@@ -516,19 +537,46 @@ if query_conditions:
                         # Vegetation Description
                         if show_vegetation_desc and pd.notna(row['vegetation_description']) and row['vegetation_description']:
                             veg_desc = str(row['vegetation_description'])
-                            if len(veg_desc) > 2000:
-                                veg_desc = veg_desc[:2000] + "..."
+                            # Show full description in PDF - split into paragraphs if very long
                             story.append(Paragraph("<b>Vegetation Description:</b>", styles['Normal']))
-                            story.append(Paragraph(veg_desc, styles['Normal']))
+                            # Split long text into multiple paragraphs for better PDF formatting
+                            if len(veg_desc) > 3000:
+                                # Split by sentences for better readability
+                                sentences = veg_desc.split('. ')
+                                current_para = ""
+                                for sentence in sentences:
+                                    if len(current_para) + len(sentence) < 2000:
+                                        current_para += sentence + ". "
+                                    else:
+                                        if current_para:
+                                            story.append(Paragraph(current_para.strip(), styles['Normal']))
+                                        current_para = sentence + ". "
+                                if current_para:
+                                    story.append(Paragraph(current_para.strip(), styles['Normal']))
+                            else:
+                                story.append(Paragraph(veg_desc, styles['Normal']))
                             story.append(Spacer(1, 0.1*inch))
                         
                         # Geographic Range
                         if show_geographic_range and pd.notna(row['geographic_range']) and row['geographic_range']:
                             geo_range = str(row['geographic_range'])
-                            if len(geo_range) > 2000:
-                                geo_range = geo_range[:2000] + "..."
+                            # Show full range in PDF - split into paragraphs if very long
                             story.append(Paragraph("<b>Geographic Range:</b>", styles['Normal']))
-                            story.append(Paragraph(geo_range, styles['Normal']))
+                            if len(geo_range) > 3000:
+                                # Split by sentences for better readability
+                                sentences = geo_range.split('. ')
+                                current_para = ""
+                                for sentence in sentences:
+                                    if len(current_para) + len(sentence) < 2000:
+                                        current_para += sentence + ". "
+                                    else:
+                                        if current_para:
+                                            story.append(Paragraph(current_para.strip(), styles['Normal']))
+                                        current_para = sentence + ". "
+                                if current_para:
+                                    story.append(Paragraph(current_para.strip(), styles['Normal']))
+                            else:
+                                story.append(Paragraph(geo_range, styles['Normal']))
                             story.append(Spacer(1, 0.1*inch))
                         
                         # Fire Regime Charts data
@@ -637,17 +685,13 @@ if query_conditions:
                     # Vegetation Description section
                     if show_vegetation_desc and pd.notna(row['vegetation_description']) and row['vegetation_description']:
                         veg_desc = str(row['vegetation_description'])
-                        # Truncate if very long
-                        if len(veg_desc) > 1000:
-                            veg_desc = veg_desc[:1000] + "..."
+                        # Show full description - no truncation
                         sections.append(("Vegetation Description", veg_desc))
                     
                     # Geographic Range section
                     if show_geographic_range and pd.notna(row['geographic_range']) and row['geographic_range']:
                         geo_range = str(row['geographic_range'])
-                        # Truncate if very long
-                        if len(geo_range) > 1000:
-                            geo_range = geo_range[:1000] + "..."
+                        # Show full range - no truncation
                         sections.append(("Geographic Range", geo_range))
                     
                     # Document Download section
