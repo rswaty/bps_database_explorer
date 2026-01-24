@@ -423,6 +423,171 @@ if query_conditions:
         
         # Note: Download buttons will be shown after checkboxes are processed
         # to ensure accurate count
+        
+        st.markdown("---")
+        
+        # Display results with checkboxes
+        for idx, row in df.iterrows():
+            # Create document link if document exists
+            doc_path = DOCS_PATH / row['document'] if row['document'] else None
+            doc_exists = doc_path.exists() if doc_path else False
+            
+            # Build display title with bps_name prominently
+            title_parts = [f"**{row['bps_model_id']}**"]
+            if pd.notna(row['bps_name']) and row['bps_name']:
+                title_parts.append(f"- {row['bps_name']}")
+            if pd.notna(row['vegetation_type']) and row['vegetation_type']:
+                title_parts.append(f"({row['vegetation_type']})")
+            
+            title = " ".join(title_parts)
+            
+            # Checkbox for selection
+            model_id = row['bps_model_id']
+            is_selected = model_id in st.session_state.selected_models
+            
+            col_check, col_title = st.columns([0.1, 9.9])
+            with col_check:
+                selected = st.checkbox(
+                    "",
+                    value=is_selected,
+                    key=f"select_{model_id}",
+                    label_visibility="collapsed"
+                )
+                if selected and model_id not in st.session_state.selected_models:
+                    st.session_state.selected_models.add(model_id)
+                elif not selected and model_id in st.session_state.selected_models:
+                    st.session_state.selected_models.remove(model_id)
+            
+            with col_title:
+                with st.expander(title):
+                    # Display sections based on user preferences
+                    sections = []
+                    
+                    # Model ID section
+                    if show_model_id:
+                        sections.append(("Model ID", f"`{row['bps_model_id']}`"))
+                    
+                    # BPS Name section
+                    if show_bps_name and pd.notna(row['bps_name']) and row['bps_name']:
+                        sections.append(("BPS Name", row['bps_name']))
+                    
+                    # Vegetation Description section
+                    if show_vegetation_desc and pd.notna(row['vegetation_description']) and row['vegetation_description']:
+                        veg_desc = str(row['vegetation_description'])
+                        # Show full description - no truncation
+                        sections.append(("Vegetation Description", veg_desc))
+                    
+                    # Geographic Range section
+                    if show_geographic_range and pd.notna(row['geographic_range']) and row['geographic_range']:
+                        geo_range = str(row['geographic_range'])
+                        # Show full range - no truncation
+                        sections.append(("Geographic Range", geo_range))
+                    
+                    # Document Download section
+                    if show_document:
+                        sections.append(("Document", (doc_exists, doc_path, row['document'])))
+                    
+                    # Display sections in columns
+                    if sections:
+                        col1, col2 = st.columns([2, 1])
+                        
+                        with col1:
+                            for section_name, section_content in sections:
+                                if section_name == "Document":
+                                    continue  # Handle separately
+                                st.markdown(f"**{section_name}:**")
+                                if section_name in ["Vegetation Description", "Geographic Range"]:
+                                    st.write(section_content)
+                                else:
+                                    st.markdown(section_content)
+                                st.markdown("---")
+                        
+                        with col2:
+                            # Document download
+                            if show_document:
+                                st.markdown("**Document:**")
+                                # Get document info
+                                doc_name = row['document'] if pd.notna(row['document']) else None
+                                if doc_exists and doc_path:
+                                    with open(doc_path, 'rb') as f:
+                                        doc_bytes = f.read()
+                                    st.download_button(
+                                        label="📄 Download Document",
+                                        data=doc_bytes,
+                                        file_name=doc_name,
+                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                        key=f"download_{row['bps_model_id']}_{idx}"
+                                    )
+                                    st.caption(f"File: {doc_name}")
+                                elif doc_name:
+                                    st.warning(f"Document not found: {doc_name}")
+                                else:
+                                    st.info("No document available")
+                    
+                    # Fire Regime Charts section
+                    if show_fire_charts:
+                        st.markdown("---")
+                        st.markdown("**🔥 Fire Regime Charts**")
+                        
+                        # Get fire frequency data for this model
+                        fire_query = """
+                        SELECT 
+                            severity,
+                            "return_interval(years)" as return_interval,
+                            percent_of_all_fires as percent
+                        FROM fire_frequency
+                        WHERE bps_model_id = ?
+                        AND severity IS NOT NULL
+                        ORDER BY percent DESC
+                        """
+                        fire_df = run_query(fire_query, params=(row['bps_model_id'],))
+                        
+                        if len(fire_df) > 0:
+                            st.subheader("Return Intervals by Severity")
+                            # Horizontal bar chart of return intervals using Altair
+                            chart = alt.Chart(fire_df).mark_bar().encode(
+                                x=alt.X('return_interval:Q', title='Return Interval (years)'),
+                                y=alt.Y('severity:N', title='Severity', sort='-x'),
+                                tooltip=['severity', 'return_interval', 'percent']
+                            ).properties(
+                                width=600,
+                                height=300
+                            )
+                            st.altair_chart(chart, use_container_width=True)
+                            
+                            # Data table
+                            st.markdown("**Fire Frequency Data:**")
+                            st.dataframe(fire_df, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("No fire frequency data available for this model.")
+        
+        # Download buttons for selected models - placed after checkbox processing
+        # to ensure accurate count
+        if st.session_state.selected_models:
+            num_selected = len(st.session_state.selected_models)  # Recalculate after checkboxes
+            st.markdown("---")
+            with st.expander("ℹ️ What's included in bulk downloads?", expanded=False):
+                st.markdown("""
+                **📦 ZIP Download (Selected Documents):**
+                - Contains all Word (.docx) documents for the selected models
+                - Only includes documents that exist in the database
+                - Files are named with their original document names
+                - Use this to download multiple model documents at once
+                
+                **📄 PDF Report:**
+                - Contains a formatted report with all selected models
+                - Includes only the display options you've selected:
+                  - Model ID (if enabled)
+                  - BPS Name (if enabled)
+                  - Vegetation Description (if enabled) - **Full text, not truncated**
+                  - Geographic Range (if enabled) - **Full text, not truncated**
+                  - Fire Regime Charts data (if enabled) - includes tables with severity, return intervals, and percentages
+                - Each model appears on its own page
+                - Shows active filters used for the search
+                - Perfect for sharing or printing reports
+                """)
+            
+            col_dl1, col_dl2 = st.columns(2)
             
             with col_dl1:
                 # Create ZIP of selected documents
@@ -611,171 +776,7 @@ if query_conditions:
                     mime="application/pdf",
                     use_container_width=True
                 )
-        
-        st.markdown("---")
-        
-        # Display results with checkboxes
-        for idx, row in df.iterrows():
-            # Create document link if document exists
-            doc_path = DOCS_PATH / row['document'] if row['document'] else None
-            doc_exists = doc_path.exists() if doc_path else False
-            
-            # Build display title with bps_name prominently
-            title_parts = [f"**{row['bps_model_id']}**"]
-            if pd.notna(row['bps_name']) and row['bps_name']:
-                title_parts.append(f"- {row['bps_name']}")
-            if pd.notna(row['vegetation_type']) and row['vegetation_type']:
-                title_parts.append(f"({row['vegetation_type']})")
-            
-            title = " ".join(title_parts)
-            
-            # Checkbox for selection
-            model_id = row['bps_model_id']
-            is_selected = model_id in st.session_state.selected_models
-            
-            col_check, col_title = st.columns([0.1, 9.9])
-            with col_check:
-                selected = st.checkbox(
-                    "",
-                    value=is_selected,
-                    key=f"select_{model_id}",
-                    label_visibility="collapsed"
-                )
-                if selected and model_id not in st.session_state.selected_models:
-                    st.session_state.selected_models.add(model_id)
-                elif not selected and model_id in st.session_state.selected_models:
-                    st.session_state.selected_models.remove(model_id)
-            
-            with col_title:
-                with st.expander(title):
-                    # Display sections based on user preferences
-                    sections = []
-                    
-                    # Model ID section
-                    if show_model_id:
-                        sections.append(("Model ID", f"`{row['bps_model_id']}`"))
-                    
-                    # BPS Name section
-                    if show_bps_name and pd.notna(row['bps_name']) and row['bps_name']:
-                        sections.append(("BPS Name", row['bps_name']))
-                    
-                    # Vegetation Description section
-                    if show_vegetation_desc and pd.notna(row['vegetation_description']) and row['vegetation_description']:
-                        veg_desc = str(row['vegetation_description'])
-                        # Show full description - no truncation
-                        sections.append(("Vegetation Description", veg_desc))
-                    
-                    # Geographic Range section
-                    if show_geographic_range and pd.notna(row['geographic_range']) and row['geographic_range']:
-                        geo_range = str(row['geographic_range'])
-                        # Show full range - no truncation
-                        sections.append(("Geographic Range", geo_range))
-                    
-                    # Document Download section
-                    if show_document:
-                        sections.append(("Document", (doc_exists, doc_path, row['document'])))
-                    
-                    # Display sections in columns
-                    if sections:
-                        col1, col2 = st.columns([2, 1])
-                        
-                        with col1:
-                            for section_name, section_content in sections:
-                                if section_name == "Document":
-                                    continue  # Handle separately
-                                st.markdown(f"**{section_name}:**")
-                                if section_name in ["Vegetation Description", "Geographic Range"]:
-                                    st.write(section_content)
-                                else:
-                                    st.markdown(section_content)
-                                st.markdown("---")
-                        
-                        with col2:
-                            # Document download
-                            if show_document:
-                                st.markdown("**Document:**")
-                                # Get document info
-                                doc_name = row['document'] if pd.notna(row['document']) else None
-                                if doc_exists and doc_path:
-                                    with open(doc_path, 'rb') as f:
-                                        doc_bytes = f.read()
-                                    st.download_button(
-                                        label="📄 Download Document",
-                                        data=doc_bytes,
-                                        file_name=doc_name,
-                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                        key=f"download_{row['bps_model_id']}_{idx}"
-                                    )
-                                    st.caption(f"File: {doc_name}")
-                                elif doc_name:
-                                    st.warning(f"Document not found: {doc_name}")
-                                else:
-                                    st.info("No document available")
-                    
-                    # Fire Regime Charts section
-                    if show_fire_charts:
-                        st.markdown("---")
-                        st.markdown("**🔥 Fire Regime Charts**")
-                        
-                        # Get fire frequency data for this model
-                        fire_query = """
-                        SELECT 
-                            severity,
-                            "return_interval(years)" as return_interval,
-                            percent_of_all_fires as percent
-                        FROM fire_frequency
-                        WHERE bps_model_id = ?
-                        AND severity IS NOT NULL
-                        ORDER BY percent DESC
-                        """
-                        fire_df = run_query(fire_query, params=(row['bps_model_id'],))
-                        
-                        if len(fire_df) > 0:
-                            st.subheader("Return Intervals by Severity")
-                            # Horizontal bar chart of return intervals using Altair
-                            chart = alt.Chart(fire_df).mark_bar().encode(
-                                x=alt.X('return_interval:Q', title='Return Interval (years)'),
-                                y=alt.Y('severity:N', title='Severity', sort='-x'),
-                                tooltip=['severity', 'return_interval', 'percent']
-                            ).properties(
-                                width=600,
-                                height=300
-                            )
-                            st.altair_chart(chart, use_container_width=True)
-                            
-                            # Data table
-                            st.markdown("**Fire Frequency Data:**")
-                            st.dataframe(fire_df, use_container_width=True, hide_index=True)
-                        else:
-                            st.info("No fire frequency data available for this model.")
-        
-        # Download buttons for selected models - placed after checkbox processing
-        # to ensure accurate count
-        if st.session_state.selected_models:
-            num_selected = len(st.session_state.selected_models)  # Recalculate after checkboxes
-            st.markdown("---")
-            with st.expander("ℹ️ What's included in bulk downloads?", expanded=False):
-                st.markdown("""
-                **📦 ZIP Download (Selected Documents):**
-                - Contains all Word (.docx) documents for the selected models
-                - Only includes documents that exist in the database
-                - Files are named with their original document names
-                - Use this to download multiple model documents at once
-                
-                **📄 PDF Report:**
-                - Contains a formatted report with all selected models
-                - Includes only the display options you've selected:
-                  - Model ID (if enabled)
-                  - BPS Name (if enabled)
-                  - Vegetation Description (if enabled) - **Full text, not truncated**
-                  - Geographic Range (if enabled) - **Full text, not truncated**
-                  - Fire Regime Charts data (if enabled) - includes tables with severity, return intervals, and percentages
-                - Each model appears on its own page
-                - Shows active filters used for the search
-                - Perfect for sharing or printing reports
-                """)
-            
-            col_dl1, col_dl2 = st.columns(2)
+    else:
         st.warning("❌ No models found matching your filter criteria.")
         st.info("💡 Try adjusting your filters or clearing them to see more results.")
 else:
