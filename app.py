@@ -3,6 +3,7 @@ import sqlite3
 import pandas as pd
 from pathlib import Path
 import os
+import re
 import altair as alt
 import zipfile
 import io
@@ -121,6 +122,159 @@ def get_fire_frequency_ranges():
                 'max': int(row['max_val'])
             }
     return ranges
+
+def get_species_list_for_model(model_id):
+    """Get list of scientific names for a model from the species table"""
+    species_query = """
+    SELECT DISTINCT scientific_name
+    FROM bps_indicators
+    WHERE bps_model_id = ?
+    AND scientific_name IS NOT NULL
+    ORDER BY scientific_name
+    """
+    try:
+        species_df = run_query(species_query, params=(model_id,))
+        return species_df['scientific_name'].dropna().astype(str).tolist()
+    except:
+        return []
+
+def italicize_scientific_names_from_table(text, species_list):
+    """
+    Italicize scientific names in text by matching against species list from database.
+    Handles full names and abbreviations (e.g., "Q. garryana" for "Quercus garryana").
+    Also handles subspecies variations (subsp./ssp./subspecies).
+    """
+    if not text or pd.isna(text) or not species_list:
+        return text
+    
+    text = str(text)
+    
+    # Process each species name
+    for scientific_name in species_list:
+        if not scientific_name or len(scientific_name.strip()) < 3:
+            continue
+        
+        scientific_name = scientific_name.strip()
+        
+        # Split into genus and species parts
+        parts = scientific_name.split()
+        if len(parts) < 2:
+            continue
+        
+        genus = parts[0]
+        species = parts[1]
+        genus_first_letter = genus[0] if genus else ""
+        
+        # Handle subspecies variations
+        # Check if there's a subspecies part (e.g., "Festuca idahoensis subsp. roemeri")
+        subspecies_part = None
+        if len(parts) >= 4 and parts[2].lower() in ['subsp.', 'ssp.', 'subspecies', 'var.', 'variety']:
+            subspecies_part = parts[3] if len(parts) > 3 else None
+        elif len(parts) >= 3:
+            # Sometimes subspecies is written as "species subsp. name" or "species ssp. name"
+            if parts[1].lower() not in ['subsp.', 'ssp.', 'subspecies', 'var.', 'variety']:
+                # No subspecies indicator, just genus species
+                pass
+        
+        # Create patterns to match:
+        # 1. Full name: "Quercus garryana" or "Festuca idahoensis subsp. roemeri"
+        # 2. Abbreviated genus: "Q. garryana" or "F. idahoensis subsp. roemeri"
+        # Use word boundaries to avoid partial matches
+        
+        # Base patterns (genus species) - always include these
+        base_patterns = [
+            (rf'\b{re.escape(scientific_name)}\b', scientific_name),  # Full name exactly
+            (rf'\b{re.escape(genus)}\s+{re.escape(species)}\b', f"{genus} {species}"),  # Genus species (even if DB has subspecies)
+            (rf'\b{re.escape(genus_first_letter)}\.\s+{re.escape(species)}\b', f"{genus_first_letter}. {species}"),  # Q. garryana
+            (rf'\b{re.escape(genus_first_letter)}\s+{re.escape(species)}\b', f"{genus_first_letter} {species}"),  # Q garryana (no period)
+        ]
+        
+        # If there's a subspecies, also create patterns for it
+        if subspecies_part:
+            # Match "genus species subsp. subspecies" or "genus species ssp. subspecies"
+            # Also handle cases where text has spaces in subspecies name (e.g., "r oemeri" vs "roemeri")
+            subsp_patterns = [
+                (rf'\b{re.escape(genus)}\s+{re.escape(species)}\s+subsp\.\s+{re.escape(subspecies_part)}\b', f"{genus} {species} subsp. {subspecies_part}"),
+                (rf'\b{re.escape(genus)}\s+{re.escape(species)}\s+ssp\.\s+{re.escape(subspecies_part)}\b', f"{genus} {species} ssp. {subspecies_part}"),
+                (rf'\b{re.escape(genus_first_letter)}\.\s+{re.escape(species)}\s+subsp\.\s+{re.escape(subspecies_part)}\b', f"{genus_first_letter}. {species} subsp. {subspecies_part}"),
+                (rf'\b{re.escape(genus_first_letter)}\.\s+{re.escape(species)}\s+ssp\.\s+{re.escape(subspecies_part)}\b', f"{genus_first_letter}. {species} ssp. {subspecies_part}"),
+                # Handle spaced subspecies names (e.g., "ssp. r oemeri" -> "ssp. roemeri")
+                (rf'\b{re.escape(genus)}\s+{re.escape(species)}\s+ssp\.\s+{subspecies_part[0]}\s+{subspecies_part[1:]}\b', f"{genus} {species} ssp. {subspecies_part}"),
+            ]
+            base_patterns.extend(subsp_patterns)
+        
+        # Replace each pattern with italicized version (markdown format)
+        # Process in reverse order (longest first) to avoid partial matches
+        for pattern, replacement in reversed(base_patterns):
+            # Only replace if not already italicized
+            if f"*{replacement}*" not in text and f"<i>{replacement}</i>" not in text:
+                text = re.sub(pattern, f"*{replacement}*", text, flags=re.IGNORECASE)
+    
+    return text
+
+def italicize_scientific_names_from_table_html(text, species_list):
+    """
+    Italicize scientific names in text for HTML/PDF format.
+    Same as italicize_scientific_names_from_table but uses HTML <i> tags.
+    Also handles subspecies variations (subsp./ssp./subspecies).
+    """
+    if not text or pd.isna(text) or not species_list:
+        return text
+    
+    text = str(text)
+    
+    # Process each species name
+    for scientific_name in species_list:
+        if not scientific_name or len(scientific_name.strip()) < 3:
+            continue
+        
+        scientific_name = scientific_name.strip()
+        
+        # Split into genus and species parts
+        parts = scientific_name.split()
+        if len(parts) < 2:
+            continue
+        
+        genus = parts[0]
+        species = parts[1]
+        genus_first_letter = genus[0] if genus else ""
+        
+        # Handle subspecies variations
+        # Check if there's a subspecies part (e.g., "Festuca idahoensis subsp. roemeri")
+        subspecies_part = None
+        if len(parts) >= 4 and parts[2].lower() in ['subsp.', 'ssp.', 'subspecies', 'var.', 'variety']:
+            subspecies_part = parts[3] if len(parts) > 3 else None
+        
+        # Create patterns to match - always include genus+species even if DB has subspecies
+        base_patterns = [
+            (rf'\b{re.escape(scientific_name)}\b', scientific_name),  # Full name exactly
+            (rf'\b{re.escape(genus)}\s+{re.escape(species)}\b', f"{genus} {species}"),  # Genus species (even if DB has subspecies)
+            (rf'\b{re.escape(genus_first_letter)}\.\s+{re.escape(species)}\b', f"{genus_first_letter}. {species}"),  # Q. garryana
+            (rf'\b{re.escape(genus_first_letter)}\s+{re.escape(species)}\b', f"{genus_first_letter} {species}"),  # Q garryana (no period)
+        ]
+        
+        # If there's a subspecies, also create patterns for it
+        if subspecies_part:
+            # Match "genus species subsp. subspecies" or "genus species ssp. subspecies"
+            # Also handle cases where text has spaces in subspecies name (e.g., "r oemeri" vs "roemeri")
+            subsp_patterns = [
+                (rf'\b{re.escape(genus)}\s+{re.escape(species)}\s+subsp\.\s+{re.escape(subspecies_part)}\b', f"{genus} {species} subsp. {subspecies_part}"),
+                (rf'\b{re.escape(genus)}\s+{re.escape(species)}\s+ssp\.\s+{re.escape(subspecies_part)}\b', f"{genus} {species} ssp. {subspecies_part}"),
+                (rf'\b{re.escape(genus_first_letter)}\.\s+{re.escape(species)}\s+subsp\.\s+{re.escape(subspecies_part)}\b', f"{genus_first_letter}. {species} subsp. {subspecies_part}"),
+                (rf'\b{re.escape(genus_first_letter)}\.\s+{re.escape(species)}\s+ssp\.\s+{re.escape(subspecies_part)}\b', f"{genus_first_letter}. {species} ssp. {subspecies_part}"),
+                # Handle spaced subspecies names (e.g., "ssp. r oemeri" -> "ssp. roemeri")
+                (rf'\b{re.escape(genus)}\s+{re.escape(species)}\s+ssp\.\s+{subspecies_part[0]}\s+{subspecies_part[1:]}\b', f"{genus} {species} ssp. {subspecies_part}"),
+            ]
+            base_patterns.extend(subsp_patterns)
+        
+        # Replace each pattern with italicized version (HTML format)
+        # Process in reverse order (longest first) to avoid partial matches
+        for pattern, replacement in reversed(base_patterns):
+            # Only replace if not already italicized
+            if f"<i>{replacement}</i>" not in text and f"*{replacement}*" not in text:
+                text = re.sub(pattern, f"<i>{replacement}</i>", text, flags=re.IGNORECASE)
+    
+    return text
 
 # Main title
 st.title("🌲 BPS Database Explorer - Model Search")
@@ -448,6 +602,10 @@ if query_conditions:
         bm.document,
         bm.vegetation_description,
         bm.geographic_range,
+        bm.biophysical_site_description,
+        bm.scale_description,
+        bm.issues_or_problems,
+        bm.native_uncharacteristic_conditions,
         rcl.bps_name
     FROM bps_models bm
     LEFT JOIN ref_con_long rcl ON bm.bps_model_id = rcl.bps_model_id
@@ -483,6 +641,12 @@ if query_conditions:
             show_bps_name = st.checkbox("BPS Name", value=True, key="disp_bps_name")
             show_vegetation_desc = st.checkbox("Vegetation Description", value=False, key="disp_veg_desc")
             show_geographic_range = st.checkbox("Geographic Range", value=False, key="disp_geo_range")
+            show_biophysical_site = st.checkbox("Biophysical Site Description", value=False, key="disp_biophysical_site")
+            show_scale_desc = st.checkbox("Scale Description", value=False, key="disp_scale_desc")
+            show_issues = st.checkbox("Issues or Problems", value=False, key="disp_issues")
+            show_uncharacteristic = st.checkbox("Native Uncharacteristic Conditions", value=False, key="disp_uncharacteristic")
+            show_species = st.checkbox("BpS Dominant and Indicator Species", value=False, key="disp_species")
+            show_succession = st.checkbox("Succession Class Descriptions", value=False, key="disp_succession")
             show_document = st.checkbox("Document Download", value=True, key="disp_document")
             show_fire_charts = st.checkbox("Fire Regime Charts", value=False, key="disp_fire_charts")
     
@@ -569,10 +733,10 @@ if query_conditions:
             col_check, col_title = st.columns([0.1, 9.9])
             with col_check:
                 selected = st.checkbox(
-                    "",
+                    "Select",
                     value=is_selected,
                     key=f"select_{model_id}",
-                    label_visibility="collapsed"
+                    label_visibility="hidden"
                 )
                 if selected and model_id not in st.session_state.selected_models:
                     st.session_state.selected_models.add(model_id)
@@ -618,7 +782,10 @@ if query_conditions:
                                     continue  # Handle separately
                                 st.markdown(f"**{section_name}:**")
                                 if section_name in ["Vegetation Description", "Geographic Range"]:
-                                    st.write(section_content)
+                                    # Get species list and italicize matches
+                                    species_list = get_species_list_for_model(row['bps_model_id'])
+                                    section_content_italicized = italicize_scientific_names_from_table(section_content, species_list)
+                                    st.markdown(section_content_italicized)
                                 else:
                                     st.markdown(section_content)
                                 st.markdown("---")
@@ -644,6 +811,155 @@ if query_conditions:
                                     st.warning(f"Document not found: {doc_name}")
                                 else:
                                     st.info("No document available")
+                    
+                    # Biophysical Site Description section (expandable for long content)
+                    if show_biophysical_site and pd.notna(row.get('biophysical_site_description')) and row.get('biophysical_site_description'):
+                        st.markdown("---")
+                        with st.expander("🌍 Biophysical Site Description", expanded=False):
+                            bio_desc = str(row['biophysical_site_description'])
+                            # Get species list and italicize matches
+                            species_list = get_species_list_for_model(row['bps_model_id'])
+                            bio_desc_italicized = italicize_scientific_names_from_table(bio_desc, species_list)
+                            st.markdown(bio_desc_italicized)
+                    
+                    # Scale Description section (expandable for long content)
+                    if show_scale_desc and pd.notna(row.get('scale_description')) and row.get('scale_description'):
+                        st.markdown("---")
+                        with st.expander("📏 Scale Description", expanded=False):
+                            scale_desc = str(row['scale_description'])
+                            # Get species list and italicize matches
+                            species_list = get_species_list_for_model(row['bps_model_id'])
+                            scale_desc_italicized = italicize_scientific_names_from_table(scale_desc, species_list)
+                            st.markdown(scale_desc_italicized)
+                    
+                    # Issues or Problems section (expandable for long content)
+                    if show_issues and pd.notna(row.get('issues_or_problems')) and row.get('issues_or_problems'):
+                        st.markdown("---")
+                        with st.expander("⚠️ Issues or Problems", expanded=False):
+                            issues = str(row['issues_or_problems'])
+                            # Get species list and italicize matches
+                            species_list = get_species_list_for_model(row['bps_model_id'])
+                            issues_italicized = italicize_scientific_names_from_table(issues, species_list)
+                            st.markdown(issues_italicized)
+                    
+                    # Native Uncharacteristic Conditions section (expandable for long content)
+                    if show_uncharacteristic and pd.notna(row.get('native_uncharacteristic_conditions')) and row.get('native_uncharacteristic_conditions'):
+                        st.markdown("---")
+                        with st.expander("🚫 Native Uncharacteristic Conditions", expanded=False):
+                            unchar = str(row['native_uncharacteristic_conditions'])
+                            # Get species list and italicize matches
+                            species_list = get_species_list_for_model(row['bps_model_id'])
+                            unchar_italicized = italicize_scientific_names_from_table(unchar, species_list)
+                            st.markdown(unchar_italicized)
+                    
+                    # BpS Dominant and Indicator Species section (table)
+                    if show_species:
+                        st.markdown("---")
+                        st.markdown("**🌿 BpS Dominant and Indicator Species**")
+                        species_query = """
+                        SELECT 
+                            symbol,
+                            scientific_name,
+                            common_name
+                        FROM bps_indicators
+                        WHERE bps_model_id = ?
+                        ORDER BY scientific_name
+                        """
+                        species_df = run_query(species_query, params=(row['bps_model_id'],))
+                        if len(species_df) > 0:
+                            # Create HTML table with proper CSS for wrapping and italics
+                            html_content = """
+                            <style>
+                            .species-table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                margin: 10px 0;
+                            }
+                            .species-table th,
+                            .species-table td {
+                                padding: 8px;
+                                text-align: left;
+                                border: 1px solid #ddd;
+                                word-wrap: break-word;
+                                overflow-wrap: break-word;
+                                max-width: 0;
+                            }
+                            .species-table th {
+                                background-color: #f0f0f0;
+                                font-weight: bold;
+                            }
+                            </style>
+                            <table class="species-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 20%;">Symbol</th>
+                                    <th style="width: 40%;">Scientific Name</th>
+                                    <th style="width: 40%;">Common Name</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            """
+                            
+                            for _, species_row in species_df.iterrows():
+                                symbol = str(species_row['symbol']) if pd.notna(species_row['symbol']) else 'N/A'
+                                sci_name = str(species_row['scientific_name']) if pd.notna(species_row['scientific_name']) else 'N/A'
+                                common_name = str(species_row['common_name']) if pd.notna(species_row['common_name']) else 'N/A'
+                                
+                                # Escape HTML entities
+                                symbol = symbol.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                                common_name = common_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                                
+                                html_content += f"""
+                                <tr>
+                                    <td>{symbol}</td>
+                                    <td>{sci_name}</td>
+                                    <td>{common_name}</td>
+                                </tr>
+                                """
+                            
+                            html_content += """
+                            </tbody>
+                            </table>
+                            """
+                            
+                            st.markdown(html_content, unsafe_allow_html=True)
+                        else:
+                            st.info("No species indicator data available for this model.")
+                    
+                    # Succession Class Descriptions section (single expandable section with structured data)
+                    if show_succession:
+                        st.markdown("---")
+                        st.markdown("**🔄 Succession Class Descriptions**")
+                        succession_query = """
+                        SELECT 
+                            scl.ref_label,
+                            scl.state_class_id,
+                            scl.description,
+                            rcl.ref_percent
+                        FROM scls_descriptions scl
+                        LEFT JOIN ref_con_long rcl ON scl.bps_model_id = rcl.bps_model_id AND scl.ref_label = rcl.ref_label
+                        WHERE scl.bps_model_id = ?
+                        ORDER BY scl.ref_label
+                        """
+                        succession_df = run_query(succession_query, params=(row['bps_model_id'],))
+                        if len(succession_df) > 0:
+                            # Display as expandable sections for each class
+                            for _, scls_row in succession_df.iterrows():
+                                ref_label = str(scls_row['ref_label']) if pd.notna(scls_row['ref_label']) else 'Unknown'
+                                state_class_id = str(scls_row['state_class_id']) if pd.notna(scls_row['state_class_id']) else 'N/A'
+                                description = str(scls_row['description']) if pd.notna(scls_row['description']) else 'No description available'
+                                ref_percent = scls_row['ref_percent'] if pd.notna(scls_row['ref_percent']) else None
+                                
+                                # Format ref_percent if available
+                                ref_percent_str = f" ({ref_percent:.1f}%)" if ref_percent is not None else ""
+                                
+                                with st.expander(f"**{ref_label}{ref_percent_str}** (State Class: {state_class_id})", expanded=False):
+                                    # Get species list and italicize matches
+                                    species_list = get_species_list_for_model(row['bps_model_id'])
+                                    description_italicized = italicize_scientific_names_from_table(description, species_list)
+                                    st.markdown(description_italicized)
+                        else:
+                            st.info("No succession class descriptions available for this model.")
                     
                     # Fire Regime Charts section
                     if show_fire_charts:
@@ -676,9 +992,19 @@ if query_conditions:
                             )
                             st.altair_chart(chart, use_container_width=True)
                             
-                            # Data table
+                            # Data table with wrapping
                             st.markdown("**Fire Frequency Data:**")
-                            st.dataframe(fire_df, use_container_width=True, hide_index=True)
+                            # Use st.dataframe with column configuration for better wrapping
+                            st.dataframe(
+                                fire_df,
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    "severity": st.column_config.TextColumn("Severity", width="medium"),
+                                    "return_interval": st.column_config.NumberColumn("Return Interval (years)", format="%.1f", width="medium"),
+                                    "percent": st.column_config.NumberColumn("Percent of All Fires", format="%.1f%%", width="medium")
+                                }
+                            )
                         else:
                             st.info("No fire frequency data available for this model.")
         
@@ -702,7 +1028,13 @@ if query_conditions:
                   - BPS Name (if enabled)
                   - Vegetation Description (if enabled) - **Full text, not truncated**
                   - Geographic Range (if enabled) - **Full text, not truncated**
-                  - Fire Regime Charts data (if enabled) - includes tables with severity, return intervals, and percentages
+                  - Biophysical Site Description (if enabled) - **Full text, not truncated**
+                  - Scale Description (if enabled) - **Full text, not truncated**
+                  - Issues or Problems (if enabled) - **Full text, not truncated**
+                  - Native Uncharacteristic Conditions (if enabled) - **Full text, not truncated**
+                  - BpS Dominant and Indicator Species (if enabled) - **Table format**
+                  - Succession Class Descriptions (if enabled) - **Full descriptions with percentages**
+                  - Fire Regime Charts data (if enabled) - includes charts and tables with severity, return intervals, and percentages
                 - Each model appears on its own page
                 - Shows active filters used for the search
                 - Perfect for sharing or printing reports
@@ -745,6 +1077,12 @@ if query_conditions:
                 pdf_show_bps_name = bool(show_bps_name)
                 pdf_show_vegetation_desc = bool(show_vegetation_desc)
                 pdf_show_geographic_range = bool(show_geographic_range)
+                pdf_show_biophysical_site = bool(show_biophysical_site)
+                pdf_show_scale_desc = bool(show_scale_desc)
+                pdf_show_issues = bool(show_issues)
+                pdf_show_uncharacteristic = bool(show_uncharacteristic)
+                pdf_show_species = bool(show_species)
+                pdf_show_succession = bool(show_succession)
                 pdf_show_fire_charts = bool(show_fire_charts)
                 
                 def create_pdf_report():
@@ -784,6 +1122,18 @@ if query_conditions:
                         display_options_used.append("Vegetation Description")
                     if pdf_show_geographic_range:
                         display_options_used.append("Geographic Range")
+                    if pdf_show_biophysical_site:
+                        display_options_used.append("Biophysical Site Description")
+                    if pdf_show_scale_desc:
+                        display_options_used.append("Scale Description")
+                    if pdf_show_issues:
+                        display_options_used.append("Issues or Problems")
+                    if pdf_show_uncharacteristic:
+                        display_options_used.append("Native Uncharacteristic Conditions")
+                    if pdf_show_species:
+                        display_options_used.append("BpS Dominant and Indicator Species")
+                    if pdf_show_succession:
+                        display_options_used.append("Succession Class Descriptions")
                     if pdf_show_fire_charts:
                         display_options_used.append("Fire Regime Charts")
                     
@@ -831,6 +1181,9 @@ if query_conditions:
                         # Vegetation Description
                         if pdf_show_vegetation_desc and pd.notna(row['vegetation_description']) and row['vegetation_description']:
                             veg_desc = str(row['vegetation_description'])
+                            # Get species list and italicize matches for PDF
+                            species_list = get_species_list_for_model(model_id)
+                            veg_desc = italicize_scientific_names_from_table_html(veg_desc, species_list)
                             # Show full description in PDF - split into paragraphs if very long
                             story.append(Paragraph("<b>Vegetation Description:</b>", styles['Normal']))
                             # Split long text into multiple paragraphs for better PDF formatting
@@ -854,6 +1207,9 @@ if query_conditions:
                         # Geographic Range
                         if pdf_show_geographic_range and pd.notna(row['geographic_range']) and row['geographic_range']:
                             geo_range = str(row['geographic_range'])
+                            # Get species list and italicize matches for PDF
+                            species_list = get_species_list_for_model(model_id)
+                            geo_range = italicize_scientific_names_from_table_html(geo_range, species_list)
                             # Show full range in PDF - split into paragraphs if very long
                             story.append(Paragraph("<b>Geographic Range:</b>", styles['Normal']))
                             if len(geo_range) > 3000:
@@ -872,6 +1228,206 @@ if query_conditions:
                             else:
                                 story.append(Paragraph(geo_range, styles['Normal']))
                             story.append(Spacer(1, 0.1*inch))
+                        
+                        # Biophysical Site Description
+                        if pdf_show_biophysical_site and pd.notna(row.get('biophysical_site_description')) and row.get('biophysical_site_description'):
+                            bio_desc = str(row['biophysical_site_description'])
+                            # Get species list and italicize matches for PDF
+                            species_list = get_species_list_for_model(model_id)
+                            bio_desc = italicize_scientific_names_from_table_html(bio_desc, species_list)
+                            story.append(Paragraph("<b>Biophysical Site Description:</b>", styles['Normal']))
+                            if len(bio_desc) > 3000:
+                                sentences = bio_desc.split('. ')
+                                current_para = ""
+                                for sentence in sentences:
+                                    if len(current_para) + len(sentence) < 2000:
+                                        current_para += sentence + ". "
+                                    else:
+                                        if current_para:
+                                            story.append(Paragraph(current_para.strip(), styles['Normal']))
+                                        current_para = sentence + ". "
+                                if current_para:
+                                    story.append(Paragraph(current_para.strip(), styles['Normal']))
+                            else:
+                                story.append(Paragraph(bio_desc, styles['Normal']))
+                            story.append(Spacer(1, 0.1*inch))
+                        
+                        # Scale Description
+                        if pdf_show_scale_desc and pd.notna(row.get('scale_description')) and row.get('scale_description'):
+                            scale_desc = str(row['scale_description'])
+                            # Get species list and italicize matches for PDF
+                            species_list = get_species_list_for_model(model_id)
+                            scale_desc = italicize_scientific_names_from_table_html(scale_desc, species_list)
+                            story.append(Paragraph("<b>Scale Description:</b>", styles['Normal']))
+                            if len(scale_desc) > 3000:
+                                sentences = scale_desc.split('. ')
+                                current_para = ""
+                                for sentence in sentences:
+                                    if len(current_para) + len(sentence) < 2000:
+                                        current_para += sentence + ". "
+                                    else:
+                                        if current_para:
+                                            story.append(Paragraph(current_para.strip(), styles['Normal']))
+                                        current_para = sentence + ". "
+                                if current_para:
+                                    story.append(Paragraph(current_para.strip(), styles['Normal']))
+                            else:
+                                story.append(Paragraph(scale_desc, styles['Normal']))
+                            story.append(Spacer(1, 0.1*inch))
+                        
+                        # Issues or Problems
+                        if pdf_show_issues and pd.notna(row.get('issues_or_problems')) and row.get('issues_or_problems'):
+                            issues = str(row['issues_or_problems'])
+                            # Get species list and italicize matches for PDF
+                            species_list = get_species_list_for_model(model_id)
+                            issues = italicize_scientific_names_from_table_html(issues, species_list)
+                            story.append(Paragraph("<b>Issues or Problems:</b>", styles['Normal']))
+                            if len(issues) > 3000:
+                                sentences = issues.split('. ')
+                                current_para = ""
+                                for sentence in sentences:
+                                    if len(current_para) + len(sentence) < 2000:
+                                        current_para += sentence + ". "
+                                    else:
+                                        if current_para:
+                                            story.append(Paragraph(current_para.strip(), styles['Normal']))
+                                        current_para = sentence + ". "
+                                if current_para:
+                                    story.append(Paragraph(current_para.strip(), styles['Normal']))
+                            else:
+                                story.append(Paragraph(issues, styles['Normal']))
+                            story.append(Spacer(1, 0.1*inch))
+                        
+                        # Native Uncharacteristic Conditions
+                        if pdf_show_uncharacteristic and pd.notna(row.get('native_uncharacteristic_conditions')) and row.get('native_uncharacteristic_conditions'):
+                            unchar = str(row['native_uncharacteristic_conditions'])
+                            # Get species list and italicize matches for PDF
+                            species_list = get_species_list_for_model(model_id)
+                            unchar = italicize_scientific_names_from_table_html(unchar, species_list)
+                            story.append(Paragraph("<b>Native Uncharacteristic Conditions:</b>", styles['Normal']))
+                            if len(unchar) > 3000:
+                                sentences = unchar.split('. ')
+                                current_para = ""
+                                for sentence in sentences:
+                                    if len(current_para) + len(sentence) < 2000:
+                                        current_para += sentence + ". "
+                                    else:
+                                        if current_para:
+                                            story.append(Paragraph(current_para.strip(), styles['Normal']))
+                                        current_para = sentence + ". "
+                                if current_para:
+                                    story.append(Paragraph(current_para.strip(), styles['Normal']))
+                            else:
+                                story.append(Paragraph(unchar, styles['Normal']))
+                            story.append(Spacer(1, 0.1*inch))
+                        
+                        # BpS Dominant and Indicator Species (table)
+                        if pdf_show_species:
+                            story.append(Paragraph("<b>BpS Dominant and Indicator Species:</b>", styles['Normal']))
+                            story.append(Spacer(1, 0.05*inch))
+                            
+                            species_query = """
+                            SELECT 
+                                symbol,
+                                scientific_name,
+                                common_name
+                            FROM bps_indicators
+                            WHERE bps_model_id = ?
+                            ORDER BY scientific_name
+                            """
+                            
+                            try:
+                                pdf_conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+                                species_df_report = pd.read_sql_query(species_query, pdf_conn, params=(model_id,))
+                                pdf_conn.close()
+                                
+                                if len(species_df_report) > 0:
+                                    species_table_data = [['Symbol', 'Scientific Name', 'Common Name']]
+                                    for _, species_row in species_df_report.iterrows():
+                                        symbol = str(species_row['symbol']) if pd.notna(species_row['symbol']) else 'N/A'
+                                        sci_name = str(species_row['scientific_name']) if pd.notna(species_row['scientific_name']) else 'N/A'
+                                        # No italicization - just plain text
+                                        common_name = str(species_row['common_name']) if pd.notna(species_row['common_name']) else 'N/A'
+                                        species_table_data.append([symbol, sci_name, common_name])
+                                    
+                                    species_table = Table(species_table_data, colWidths=[1.5*inch, 2.5*inch, 2*inch])
+                                    species_table.setStyle(TableStyle([
+                                        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                                        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                                        ('FONTSIZE', (0, 0), (-1, 0), 10),
+                                        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                                        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                                        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+                                    ]))
+                                    story.append(species_table)
+                                else:
+                                    story.append(Paragraph("<i>No species indicator data available for this model.</i>", styles['Italic']))
+                                story.append(Spacer(1, 0.1*inch))
+                            except Exception as e:
+                                story.append(Paragraph(f"<i>Error retrieving species data: {str(e)}</i>", styles['Italic']))
+                                story.append(Spacer(1, 0.1*inch))
+                        
+                        # Succession Class Descriptions (no table, just full descriptions)
+                        if pdf_show_succession:
+                            story.append(Paragraph("<b>Succession Class Descriptions:</b>", styles['Normal']))
+                            story.append(Spacer(1, 0.05*inch))
+                            
+                            succession_query = """
+                            SELECT 
+                                scl.ref_label,
+                                scl.state_class_id,
+                                scl.description,
+                                rcl.ref_percent
+                            FROM scls_descriptions scl
+                            LEFT JOIN ref_con_long rcl ON scl.bps_model_id = rcl.bps_model_id AND scl.ref_label = rcl.ref_label
+                            WHERE scl.bps_model_id = ?
+                            ORDER BY scl.ref_label
+                            """
+                            
+                            try:
+                                pdf_conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+                                succession_df_report = pd.read_sql_query(succession_query, pdf_conn, params=(model_id,))
+                                pdf_conn.close()
+                                
+                                if len(succession_df_report) > 0:
+                                    # Add full descriptions (no table)
+                                    for _, scls_row in succession_df_report.iterrows():
+                                        ref_label = str(scls_row['ref_label']) if pd.notna(scls_row['ref_label']) else 'Unknown'
+                                        state_class_id = str(scls_row['state_class_id']) if pd.notna(scls_row['state_class_id']) else 'N/A'
+                                        description = str(scls_row['description']) if pd.notna(scls_row['description']) else 'No description available'
+                                        ref_percent = scls_row['ref_percent'] if pd.notna(scls_row['ref_percent']) else None
+                                        
+                                        # Format ref_percent if available
+                                        ref_percent_str = f" ({ref_percent:.1f}%)" if ref_percent is not None else ""
+                                        
+                                        # Get species list and italicize matches for PDF
+                                        species_list = get_species_list_for_model(model_id)
+                                        description = italicize_scientific_names_from_table_html(description, species_list)
+                                        
+                                        story.append(Paragraph(f"<b>{ref_label}{ref_percent_str}</b> (State Class: {state_class_id})", styles['Normal']))
+                                        if len(description) > 2000:
+                                            sentences = description.split('. ')
+                                            current_para = ""
+                                            for sentence in sentences:
+                                                if len(current_para) + len(sentence) < 1500:
+                                                    current_para += sentence + ". "
+                                                else:
+                                                    if current_para:
+                                                        story.append(Paragraph(current_para.strip(), styles['Normal']))
+                                                    current_para = sentence + ". "
+                                            if current_para:
+                                                story.append(Paragraph(current_para.strip(), styles['Normal']))
+                                        else:
+                                            story.append(Paragraph(description, styles['Normal']))
+                                        story.append(Spacer(1, 0.1*inch))
+                                else:
+                                    story.append(Paragraph("<i>No succession class descriptions available for this model.</i>", styles['Italic']))
+                                story.append(Spacer(1, 0.1*inch))
+                            except Exception as e:
+                                story.append(Paragraph(f"<i>Error retrieving succession class data: {str(e)}</i>", styles['Italic']))
+                                story.append(Spacer(1, 0.1*inch))
                         
                         # Fire Regime Charts data
                         if pdf_show_fire_charts:
@@ -1003,6 +1559,12 @@ else:
     show_bps_name = True
     show_vegetation_desc = False
     show_geographic_range = False
+    show_biophysical_site = False
+    show_scale_desc = False
+    show_issues = False
+    show_uncharacteristic = False
+    show_species = False
+    show_succession = False
     show_document = True
     show_fire_charts = False
     # No filters applied - show info
