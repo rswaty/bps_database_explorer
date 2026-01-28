@@ -133,6 +133,102 @@ fire_ranges = get_fire_frequency_ranges()
 
 # Create filter sidebar
 with st.sidebar:
+    st.header("📤 Upload CSV File")
+    st.caption("Upload a CSV file with bps_model_id codes")
+    
+    # CSV file upload
+    uploaded_file = st.file_uploader(
+        "Choose CSV file",
+        type=['csv'],
+        help="Upload a CSV file containing bps_model_id values. The file can have a column named 'bps_model_id', 'model_id', 'BPS_Model_ID', or the first column will be used."
+    )
+    
+    # Process uploaded CSV
+    csv_model_ids = []
+    csv_not_found = []
+    
+    # Initialize csv_not_found in session state for later use
+    if 'csv_not_found' not in st.session_state:
+        st.session_state.csv_not_found = []
+    
+    if uploaded_file is not None:
+        try:
+            # Read CSV
+            csv_df = pd.read_csv(uploaded_file)
+            
+            # Try to find bps_model_id column (case-insensitive, handle variations)
+            id_column = None
+            possible_names = ['bps_model_id', 'model_id', 'bps_modelid', 'modelid', 'BPS_Model_ID', 'Model_ID']
+            
+            for col in csv_df.columns:
+                if col.lower().strip() in [name.lower() for name in possible_names]:
+                    id_column = col
+                    break
+            
+            # If not found, use first column
+            if id_column is None:
+                id_column = csv_df.columns[0]
+                st.info(f"ℹ️ Using first column '{id_column}' as model IDs")
+            
+            # Extract model IDs, remove duplicates and empty values
+            csv_model_ids = csv_df[id_column].dropna().astype(str).str.strip().unique().tolist()
+            csv_model_ids = [mid for mid in csv_model_ids if mid]  # Remove empty strings
+            
+            if csv_model_ids:
+                st.success(f"✅ Found {len(csv_model_ids)} model ID(s) in CSV")
+                
+                # Check which ones exist in database
+                if len(csv_model_ids) > 0:
+                    # Query to check which IDs exist
+                    placeholders = ','.join(['?'] * len(csv_model_ids))
+                    check_query = f"""
+                    SELECT bps_model_id 
+                    FROM bps_models 
+                    WHERE bps_model_id IN ({placeholders})
+                    """
+                    existing_df = run_query(check_query, params=tuple(csv_model_ids))
+                    existing_ids = set(existing_df['bps_model_id'].astype(str).tolist())
+                    csv_not_found = [mid for mid in csv_model_ids if mid not in existing_ids]
+                    st.session_state.csv_not_found = csv_not_found  # Store for later use
+                    
+                    found_count = len(existing_ids)
+                    if csv_not_found:
+                        st.warning(f"⚠️ {len(csv_not_found)} model ID(s) not found in database")
+                        with st.expander("Show IDs not found"):
+                            st.write(", ".join(csv_not_found[:20]))  # Show first 20
+                            if len(csv_not_found) > 20:
+                                st.caption(f"... and {len(csv_not_found) - 20} more")
+                    else:
+                        st.info(f"✅ All {found_count} model ID(s) found in database")
+            else:
+                st.warning("⚠️ No model IDs found in CSV file")
+                
+        except Exception as e:
+            st.error(f"❌ Error reading CSV file: {str(e)}")
+            csv_model_ids = []
+            st.session_state.csv_not_found = []
+    
+    # Store CSV IDs in session state
+    if 'csv_model_ids' not in st.session_state:
+        st.session_state.csv_model_ids = []
+    
+    # Update session state when CSV is uploaded or cleared
+    if uploaded_file is not None and csv_model_ids:
+        st.session_state.csv_model_ids = csv_model_ids
+    elif uploaded_file is None:
+        # Clear session state if no file uploaded
+        if st.session_state.csv_model_ids:
+            st.session_state.csv_model_ids = []
+            st.session_state.csv_not_found = []
+    
+    # Clear CSV button
+    if st.session_state.csv_model_ids:
+        if st.button("🗑️ Clear CSV Upload", use_container_width=True):
+            st.session_state.csv_model_ids = []
+            st.session_state.csv_not_found = []
+            st.rerun()
+    
+    st.markdown("---")
     st.header("🔍 Search Filters")
     
     # Text search
@@ -267,26 +363,34 @@ with st.sidebar:
 query_conditions = []
 query_params = []
 
-# Text search
-if search_term and search_term.strip():
-    query_conditions.append("""
-        (bm.bps_model_id LIKE ? OR
-         bm.vegetation_type LIKE ? OR
-         bm.geographic_range LIKE ? OR
-         bm.biophysical_site_description LIKE ? OR
-         bm.vegetation_description LIKE ? OR
-         rcl.bps_name LIKE ?)
-    """)
-    search_pattern = f"%{search_term.strip()}%"
-    query_params.extend([search_pattern] * 6)
+# CSV Upload filter (takes priority if CSV is uploaded)
+if st.session_state.csv_model_ids:
+    # Use IN clause for CSV model IDs
+    placeholders = ','.join(['?'] * len(st.session_state.csv_model_ids))
+    query_conditions.append(f"bm.bps_model_id IN ({placeholders})")
+    query_params.extend(st.session_state.csv_model_ids)
 
-# Vegetation Type filter
+# Text search (only if no CSV upload)
+if not st.session_state.csv_model_ids:
+    if search_term and search_term.strip():
+        query_conditions.append("""
+            (bm.bps_model_id LIKE ? OR
+             bm.vegetation_type LIKE ? OR
+             bm.geographic_range LIKE ? OR
+             bm.biophysical_site_description LIKE ? OR
+             bm.vegetation_description LIKE ? OR
+             rcl.bps_name LIKE ?)
+        """)
+        search_pattern = f"%{search_term.strip()}%"
+        query_params.extend([search_pattern] * 6)
+
+# Vegetation Type filter (can combine with CSV)
 if selected_vegetation and selected_vegetation != 'All':
     # Use LIKE to match vegetation type even if it has map zone data appended
     query_conditions.append("bm.vegetation_type LIKE ?")
     query_params.append(f"{selected_vegetation}%")
 
-# Map Zone filter
+# Map Zone filter (can combine with CSV)
 if map_zone_input and map_zone_input.strip():
     # Parse comma-separated zone numbers
     try:
@@ -307,12 +411,12 @@ if map_zone_input and map_zone_input.strip():
         st.warning(f"⚠️ Error parsing map zones: {e}")
         pass
 
-# BPS Name filter
+# BPS Name filter (can combine with CSV)
 if bps_name_search and bps_name_search.strip():
     query_conditions.append("rcl.bps_name LIKE ?")
     query_params.append(f"%{bps_name_search.strip()}%")
 
-# Fire Frequency filters
+# Fire Frequency filters (can combine with CSV)
 fire_freq_conditions = []
 if fire_filters:
     for severity, (min_val, max_val) in fire_filters.items():
@@ -390,7 +494,9 @@ if query_conditions:
         
         # Show active filters
         active_filters = []
-        if search_term:
+        if st.session_state.csv_model_ids:
+            active_filters.append(f"CSV Upload: {len(st.session_state.csv_model_ids)} model ID(s)")
+        if search_term and not st.session_state.csv_model_ids:
             active_filters.append(f"Text: '{search_term}'")
         if selected_vegetation != 'All':
             active_filters.append(f"Vegetation: {selected_vegetation}")
@@ -401,6 +507,10 @@ if query_conditions:
         
         if active_filters:
             st.info("**Active Filters:** " + " | ".join(active_filters))
+        
+        # Show CSV validation info if CSV was uploaded
+        if st.session_state.csv_model_ids and st.session_state.csv_not_found:
+            st.warning(f"⚠️ Note: {len(st.session_state.csv_not_found)} model ID(s) from CSV were not found in database and are not shown in results.")
         
         st.markdown("---")
         
@@ -423,6 +533,14 @@ if query_conditions:
             if st.button("❌ Deselect All", use_container_width=True):
                 st.session_state.selected_models = set()
                 st.rerun()
+        
+        # If CSV uploaded, offer to auto-select all CSV results
+        if st.session_state.csv_model_ids:
+            csv_found_in_results = [mid for mid in st.session_state.csv_model_ids if mid in df['bps_model_id'].values]
+            if csv_found_in_results and len(csv_found_in_results) != len(st.session_state.selected_models):
+                if st.button(f"✅ Select All CSV Models ({len(csv_found_in_results)} found)", use_container_width=True):
+                    st.session_state.selected_models = set(csv_found_in_results)
+                    st.rerun()
         
         # Note: Download buttons will be shown after checkboxes are processed
         # to ensure accurate count
@@ -888,7 +1006,10 @@ else:
     show_document = True
     show_fire_charts = False
     # No filters applied - show info
-    st.info("👆 Use the filters in the sidebar to search for models")
+    if st.session_state.csv_model_ids:
+        st.info(f"📤 CSV uploaded with {len(st.session_state.csv_model_ids)} model ID(s), but no matching models found. Check your model IDs or try adjusting filters.")
+    else:
+        st.info("👆 Use the filters in the sidebar or upload a CSV file to search for models")
     st.markdown("---")
     
     # Show some statistics
