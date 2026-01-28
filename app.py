@@ -7,6 +7,7 @@ import re
 import altair as alt
 import zipfile
 import io
+# Updated: 2026-01-28 - Removed succession table, added ref_percent, removed species italics
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
