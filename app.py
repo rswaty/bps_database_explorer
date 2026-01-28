@@ -315,7 +315,7 @@ fire_ranges = get_fire_frequency_ranges()
 # Create filter sidebar
 with st.sidebar:
     st.header("📤 Upload CSV File")
-    st.caption("Upload a CSV file with bps_model_id codes")
+    st.caption('.csv file should have one column named "bps_model_id", and cells below should have values such as "10880_12_13_14_25"')
     
     # CSV file upload
     uploaded_file = st.file_uploader(
