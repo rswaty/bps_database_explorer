@@ -20,7 +20,7 @@ from reportlab.lib.enums import TA_LEFT, TA_CENTER
 
 # Page configuration
 st.set_page_config(
-    page_title="BPS Database Explorer",
+    page_title="Biophysical Settings (BPS) Information Explorer",
     page_icon="🌲",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -278,7 +278,33 @@ def italicize_scientific_names_from_table_html(text, species_list):
     return text
 
 # Main title
-st.title("🌲 BPS Database Explorer - Model Search")
+st.title("🌲 Biophysical Settings (BPS; historical ecosystems) Information Explorer")
+
+# Header section with logos and background information placeholder
+col_logo_left, col_info, col_logo_right = st.columns([1, 2, 1])
+
+with col_logo_left:
+    st.markdown("### Logo Placeholder")
+    st.info("📷 **Left Logo**\n\nAdd your organization logo here")
+    # Placeholder for logo upload/display
+    # st.image("path/to/logo_left.png", use_container_width=True)
+
+with col_info:
+    st.markdown("### Background Information")
+    st.info("📝 **Background Information**\n\nAdd background information about Biophysical Settings (BPS) and historical ecosystems here. This section can include:\n- Overview of BPS concepts\n- How to use this explorer\n- Data sources and methodology\n- Contact information")
+    # Placeholder for background text
+    # st.markdown("""
+    # **About Biophysical Settings (BPS)**
+    # 
+    # Biophysical Settings represent historical ecosystems...
+    # """)
+
+with col_logo_right:
+    st.markdown("### Logo Placeholder")
+    st.info("📷 **Right Logo**\n\nAdd your organization logo here")
+    # Placeholder for logo upload/display
+    # st.image("path/to/logo_right.png", use_container_width=True)
+
 st.markdown("---")
 
 # Get filter options
