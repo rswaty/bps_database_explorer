@@ -894,62 +894,17 @@ if query_conditions:
                         """
                         species_df = run_query(species_query, params=(row['bps_model_id'],))
                         if len(species_df) > 0:
-                            # Create HTML table with proper CSS for wrapping and italics
-                            html_content = """
-                            <style>
-                            .species-table {
-                                width: 100%;
-                                border-collapse: collapse;
-                                margin: 10px 0;
-                            }
-                            .species-table th,
-                            .species-table td {
-                                padding: 8px;
-                                text-align: left;
-                                border: 1px solid #ddd;
-                                word-wrap: break-word;
-                                overflow-wrap: break-word;
-                                max-width: 0;
-                            }
-                            .species-table th {
-                                background-color: #f0f0f0;
-                                font-weight: bold;
-                            }
-                            </style>
-                            <table class="species-table">
-                            <thead>
-                                <tr>
-                                    <th style="width: 20%;">Symbol</th>
-                                    <th style="width: 40%;">Scientific Name</th>
-                                    <th style="width: 40%;">Common Name</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            """
-                            
-                            for _, species_row in species_df.iterrows():
-                                symbol = str(species_row['symbol']) if pd.notna(species_row['symbol']) else 'N/A'
-                                sci_name = str(species_row['scientific_name']) if pd.notna(species_row['scientific_name']) else 'N/A'
-                                common_name = str(species_row['common_name']) if pd.notna(species_row['common_name']) else 'N/A'
-                                
-                                # Escape HTML entities
-                                symbol = symbol.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                                common_name = common_name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                                
-                                html_content += f"""
-                                <tr>
-                                    <td>{symbol}</td>
-                                    <td>{sci_name}</td>
-                                    <td>{common_name}</td>
-                                </tr>
-                                """
-                            
-                            html_content += """
-                            </tbody>
-                            </table>
-                            """
-                            
-                            st.markdown(html_content, unsafe_allow_html=True)
+                            # Use native Streamlit dataframe for reliable display (no raw HTML)
+                            st.dataframe(
+                                species_df,
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    "symbol": st.column_config.TextColumn("Symbol", width="small"),
+                                    "scientific_name": st.column_config.TextColumn("Scientific Name", width="medium"),
+                                    "common_name": st.column_config.TextColumn("Common Name", width="medium"),
+                                }
+                            )
                         else:
                             st.info("No species indicator data available for this model.")
                     
